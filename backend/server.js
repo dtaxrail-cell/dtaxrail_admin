@@ -7,11 +7,26 @@ import { getPool } from "./config/db.js";
 import authMiddleware from "./middleware/authMiddleware.js";
 
 import adminMiddleware from "./middleware/adminMiddleware.js";
+import authRoutes from "./routes/authRoutes.js";
+import customerRoutes from "./routes/customerRoutes.js";
+import filingRoutes from "./routes/filingRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
+import documentRoutes from "./routes/documentRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
+
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use("/auth", authRoutes);
+app.use("/customers", customerRoutes);
+app.use("/filings", filingRoutes);
+app.use("/payments", paymentRoutes);
+app.use("/documents", documentRoutes);
+app.use("/notifications", notificationRoutes);
+app.use("/dashboard", dashboardRoutes);
 
 app.get("/", async (req, res) => {
   try {
@@ -96,6 +111,6 @@ app.post(
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });

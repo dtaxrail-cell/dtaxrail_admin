@@ -16,6 +16,7 @@ import { MainLayout } from "./components/layout/MainLayout";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Toaster } from "./components/ui/sonner";
+import { DocumentDetails } from "./pages/DocumentDetails";
 
 export default function App() {
   return (
@@ -143,6 +144,10 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+  path="/document-details/:id"
+  element={<DocumentDetails />}
+/>
         </Routes>
         <Toaster />
       </BrowserRouter>

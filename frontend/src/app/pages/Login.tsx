@@ -43,6 +43,19 @@ export function Login() {
     const data = await response.json();
 
     console.log(data);
+    
+    const customersResponse = await fetch(
+  "http://localhost:5000/customers",
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
+
+const customersData = await customersResponse.json();
+
+console.log(customersData);
 
     if (response.ok) {
       toast.success("Login successful!");

@@ -145,8 +145,14 @@ export default function App() {
             }
           />
           <Route
-  path="/document-details/:id"
-  element={<DocumentDetails />}
+  path="/document-details/:filingId"
+  element={
+    <ProtectedRoute>
+      <MainLayout>
+        <DocumentDetails />
+      </MainLayout>
+    </ProtectedRoute>
+  }
 />
         </Routes>
         <Toaster />

@@ -114,3 +114,79 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+app.post(
+  "/auth/sync-customer",
+  authMiddleware,
+  async (req, res) => {
+
+    try {
+
+      const {
+        uid,
+        email,
+        name,
+        phone_number,
+      } = req.user;
+
+      const existingCustomer =
+      await getPool().query(
+
+        `
+        SELECT * FROM customers
+        WHERE email = $1
+        `,
+        [email]
+      );
+
+      if (
+        existingCustomer.rows.length === 0
+      ) {
+
+        await getPool().query(
+
+          `
+          INSERT INTO customers (
+            name,
+            email,
+            phone
+          )
+          VALUES ($1, $2, $3)
+          `,
+          [
+            name || "User",
+            email,
+            phone_number || null,
+          ]
+        );
+
+        console.log(
+          "New customer inserted"
+        );
+
+      } else {
+
+        console.log(
+          "Customer already exists"
+        );
+      }
+
+      res.json({
+
+        success: true,
+        message:
+        "Customer synced successfully",
+      });
+
+    } catch (error) {
+
+      console.log(error);
+
+      res.status(500).json({
+
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+);

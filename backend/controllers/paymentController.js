@@ -1,72 +1,242 @@
 import { getPool } from "../config/db.js";
 
+
+
+// GET ALL PAYMENTS
 export const getPayments = async (req, res) => {
+
   try {
 
-    const result = await getPool().query(`
+    const result =
+    await getPool().query(`
+
       SELECT
+
         payments.*,
+
         customers.name AS customer_name,
-        customers.email AS customer_email,
-        customers.phone AS customer_phone,
-        filings.filing_type
+
+        filings.member_name,
+        filings.relationship,
+        filings.assessment_year,
+        filings.status AS filing_status
+
       FROM payments
+
       LEFT JOIN customers
-        ON payments.customer_id = customers.id
+      ON payments.customer_id = customers.id
+
       LEFT JOIN filings
-        ON payments.filing_id = filings.id
+      ON payments.filing_id = filings.id
+
       ORDER BY payments.created_at DESC
     `);
 
-    res.json({
+
+
+
+
+    return res.json({
+
       success: true,
+
       count: result.rows.length,
-      payments: result.rows,
+
+      payments:
+      result.rows,
+
     });
 
   } catch (error) {
+
     console.log(error);
 
-    res.status(500).json({
+    return res.status(500).json({
+
       success: false,
       error: error.message,
+
     });
   }
 };
 
-export const updatePaymentStatus = async (req, res) => {
+
+
+
+
+// UPDATE PAYMENT STATUS
+export const updatePaymentStatus =
+async (req, res) => {
+
   try {
 
-    const { id } = req.params;
+    const { filingId } = req.params;
 
     const {
       payment_status,
     } = req.body;
 
-    const result = await getPool().query(
+
+
+
+
+    // CHECK EXISTING PAYMENT
+    const existingPayment =
+    await getPool().query(
+
       `
-      UPDATE payments
-      SET
-        payment_status = $1,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2
-      RETURNING *
+      SELECT *
+      FROM payments
+      WHERE filing_id = $1
       `,
-      [payment_status, id]
+
+      [filingId]
     );
 
-    res.json({
+
+
+
+
+    // GET FILING
+    const filingResult =
+    await getPool().query(
+
+      `
+      SELECT *
+      FROM filings
+      WHERE id = $1
+      `,
+
+      [filingId]
+    );
+
+
+
+
+
+    if (
+      filingResult.rows.length === 0
+    ) {
+
+      return res.status(404).json({
+
+        success: false,
+        message: "Filing not found",
+
+      });
+    }
+
+    const filing =
+    filingResult.rows[0];
+
+
+
+
+
+    let payment;
+
+
+
+
+
+    // UPDATE EXISTING
+    if (
+      existingPayment.rows.length > 0
+    ) {
+
+      const updateResult =
+      await getPool().query(
+
+        `
+        UPDATE payments
+
+        SET
+
+          payment_status = $1,
+          updated_at = CURRENT_TIMESTAMP
+
+        WHERE filing_id = $2
+
+        RETURNING *
+        `,
+
+        [
+          payment_status,
+          filingId,
+        ]
+      );
+
+      payment =
+      updateResult.rows[0];
+
+    }
+
+
+
+
+
+
+    // CREATE NEW PAYMENT
+    else {
+
+      const insertResult =
+      await getPool().query(
+
+        `
+        INSERT INTO payments (
+
+          customer_id,
+          filing_id,
+          payment_status,
+          payment_date
+
+        )
+
+        VALUES (
+          $1, $2, $3, CURRENT_TIMESTAMP
+        )
+
+        RETURNING *
+        `,
+
+        [
+
+          filing.customer_id,
+          filingId,
+          payment_status,
+
+        ]
+      );
+
+      payment =
+      insertResult.rows[0];
+    }
+
+
+
+
+
+
+    return res.json({
+
       success: true,
-      message: "Payment status updated",
-      payment: result.rows[0],
+
+      message:
+      "Payment status updated",
+
+      payment,
+
     });
 
   } catch (error) {
+
     console.log(error);
 
-    res.status(500).json({
+    return res.status(500).json({
+
       success: false,
       error: error.message,
+
     });
   }
 };

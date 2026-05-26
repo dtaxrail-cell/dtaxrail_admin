@@ -45,7 +45,7 @@ export default function App() {
             }
           />
           <Route
-            path="/filings/:id"
+  path="/filings/:filingId"
             element={
               <ProtectedRoute>
                 <MainLayout>

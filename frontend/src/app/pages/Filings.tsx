@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 
 import { auth } from "../../lib/firebase";
 
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -17,28 +23,9 @@ import {
 } from "../components/ui/table";
 
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
-
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
-
-import {
   Search,
   Download,
-  MoreVertical,
-  Eye,
-  UserPlus,
-  FileUp,
-  CheckCircle,
+  ExternalLink,
 } from "lucide-react";
 
 import { Link } from "react-router";
@@ -46,73 +33,250 @@ import { Link } from "react-router";
 import { exportToCSV } from "../utils/exportUtils";
 
 const getStatusColor = (status: string) => {
+
   const colors: Record<string, string> = {
-    Pending: "bg-amber-100 text-amber-700 border-amber-200",
-    "In Review": "bg-blue-100 text-blue-700 border-blue-200",
-    Filed: "bg-purple-100 text-purple-700 border-purple-200",
-    Completed: "bg-green-100 text-green-700 border-green-200",
-    Rejected: "bg-red-100 text-red-700 border-red-200",
+
+    Pending:
+      "bg-amber-100 text-amber-700 border-amber-200",
+
+    "Under Review":
+      "bg-blue-100 text-blue-700 border-blue-200",
+
+    Filed:
+      "bg-purple-100 text-purple-700 border-purple-200",
+
+    Completed:
+      "bg-green-100 text-green-700 border-green-200",
+
   };
 
-  return colors[status] || "bg-gray-100 text-gray-700 border-gray-200";
+  return (
+    colors[status] ||
+    "bg-gray-100 text-gray-700 border-gray-200"
+  );
 };
+
+
+
+
+
+const getPaymentColor = (
+  status: string
+) => {
+
+  if (status === "Paid") {
+
+    return "bg-green-100 text-green-700";
+  }
+
+  return "bg-red-100 text-red-700";
+};
+
+
+
+
 
 export function Filings() {
 
-  const [filings, setFilings] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [filings, setFilings] =
+  useState<any[]>([]);
+
+  const [searchTerm, setSearchTerm] =
+  useState("");
+
+
+
+
 
   useEffect(() => {
-
-    const fetchFilings = async () => {
-      try {
-
-        const token = await auth.currentUser?.getIdToken();
-
-        const response = await fetch(
-          "http://localhost:5000/filings",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        const data = await response.json();
-
-        console.log(data);
-
-        if (data.success) {
-          setFilings(data.filings);
-        }
-
-      } catch (error) {
-        console.log(error);
-      }
-    };
 
     fetchFilings();
 
   }, []);
 
-  const handleExport = () => {
 
-    const exportData = filings.map((filing: any) => ({
-      ID: filing.id,
-      Customer: filing.customer_name,
-      Phone: filing.phone,
-      FilingType: filing.filing_type,
-      Status: filing.status,
-    }));
 
-    exportToCSV(exportData, "filings");
+
+
+  const fetchFilings = async () => {
+
+    try {
+
+      const token =
+      await auth.currentUser?.getIdToken();
+
+      const response = await fetch(
+        "http://localhost:5000/filings",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+
+
+
+
+      if (data.success) {
+
+        setFilings(data.filings);
+      }
+
+    } catch (error) {
+
+      console.log(error);
+    }
   };
 
+
+
+
+
+  const updatePaymentStatus = async (
+    filingId: string,
+    paymentStatus: string
+  ) => {
+
+    try {
+
+      const token =
+      await auth.currentUser?.getIdToken();
+
+      const response = await fetch(
+
+        `http://localhost:5000/payments/filing/${filingId}`,
+
+        {
+
+          method: "PUT",
+
+          headers: {
+
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({
+
+            payment_status:
+              paymentStatus,
+          }),
+        }
+      );
+
+      const data =
+      await response.json();
+
+
+
+
+
+      if (data.success) {
+
+        setFilings((prev) =>
+
+          prev.map((filing) =>
+
+            filing.id === filingId
+
+              ? {
+                  ...filing,
+                  payment_status:
+                    paymentStatus,
+                }
+
+              : filing
+          )
+        );
+      }
+
+    } catch (error) {
+
+      console.log(error);
+    }
+  };
+
+
+
+
+
+  const filteredFilings =
+  filings.filter((filing) => {
+
+    const search =
+    searchTerm.toLowerCase();
+
+    return (
+
+      filing.member_name
+        ?.toLowerCase()
+        .includes(search)
+
+      ||
+
+      filing.customer_name
+        ?.toLowerCase()
+        .includes(search)
+
+      ||
+
+      filing.status
+        ?.toLowerCase()
+        .includes(search)
+    );
+  });
+
+
+
+
+
+  const handleExport = () => {
+
+    const exportData =
+    filteredFilings.map((filing) => ({
+
+      Member:
+        filing.member_name,
+
+      Customer:
+        filing.customer_name,
+
+      Year:
+        filing.assessment_year,
+
+      FilingStatus:
+        filing.status,
+
+      PaymentStatus:
+        filing.payment_status ||
+        "Unpaid",
+    }));
+
+    exportToCSV(
+      exportData,
+      "filings"
+    );
+  };
+
+
+
+
+
   return (
+
     <div className="space-y-6">
 
-      {/* Header */}
 
+
+
+
+      {/* HEADER */}
       <div className="flex items-center justify-between">
 
         <div>
@@ -122,87 +286,46 @@ export function Filings() {
           </h1>
 
           <p className="text-text-mid mt-1">
-            Track and manage all tax filing submissions
+            Track and manage all family filing submissions
           </p>
 
         </div>
+
+
+
+
 
         <Button
           className="rounded-xl bg-gradient-to-r from-primary to-primary-dark"
           onClick={handleExport}
         >
           <Download className="w-4 h-4 mr-2" />
-          Export to CSV
+          Export CSV
         </Button>
 
       </div>
 
-      {/* Filters */}
 
+
+
+
+      {/* SEARCH */}
       <Card className="rounded-2xl border-0 shadow-sm">
 
         <CardContent className="pt-6">
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="relative">
 
-            <div className="relative lg:col-span-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
 
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
-
-              <Input
-                placeholder="Search filings..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 rounded-xl bg-secondary border-0"
-              />
-
-            </div>
-
-            <Select defaultValue="all-years">
-
-              <SelectTrigger className="rounded-xl bg-secondary border-0">
-                <SelectValue placeholder="Filing Year" />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="all-years">
-                  All Years
-                </SelectItem>
-              </SelectContent>
-
-            </Select>
-
-            <Select defaultValue="all-status">
-
-              <SelectTrigger className="rounded-xl bg-secondary border-0">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-
-              <SelectContent>
-
-                <SelectItem value="all-status">
-                  All Status
-                </SelectItem>
-
-              </SelectContent>
-
-            </Select>
-
-            <Select defaultValue="all-payment">
-
-              <SelectTrigger className="rounded-xl bg-secondary border-0">
-                <SelectValue placeholder="Payment Status" />
-              </SelectTrigger>
-
-              <SelectContent>
-
-                <SelectItem value="all-payment">
-                  All Payments
-                </SelectItem>
-
-              </SelectContent>
-
-            </Select>
+            <Input
+              placeholder="Search customer, member, status..."
+              value={searchTerm}
+              onChange={(e) =>
+                setSearchTerm(e.target.value)
+              }
+              className="pl-10 rounded-xl bg-secondary border-0"
+            />
 
           </div>
 
@@ -210,17 +333,24 @@ export function Filings() {
 
       </Card>
 
-      {/* Table */}
 
+
+
+
+      {/* TABLE */}
       <Card className="rounded-2xl border-0 shadow-sm">
 
         <CardHeader>
 
           <CardTitle>
-            All Filings ({filings.length})
+            All Filings ({filteredFilings.length})
           </CardTitle>
 
         </CardHeader>
+
+
+
+
 
         <CardContent>
 
@@ -228,157 +358,176 @@ export function Filings() {
 
             <TableHeader>
 
-              <TableRow className="hover:bg-transparent border-border">
+              <TableRow>
 
-                <TableHead>ID</TableHead>
+                <TableHead>
+                  Member
+                </TableHead>
 
-                <TableHead>Customer</TableHead>
+                <TableHead>
+                  Customer
+                </TableHead>
 
-                <TableHead>Filing Type</TableHead>
+                <TableHead>
+                  Assessment Year
+                </TableHead>
 
-                <TableHead>Status</TableHead>
+                <TableHead>
+                  Filing Status
+                </TableHead>
 
-                <TableHead>Progress</TableHead>
+                <TableHead>
+                  Payment Status
+                </TableHead>
 
-                <TableHead>Actions</TableHead>
+                <TableHead>
+                  Workspace
+                </TableHead>
 
               </TableRow>
 
             </TableHeader>
 
+
+
+
+
             <TableBody>
 
-              {filings.map((filing: any) => (
+              {filteredFilings.map((filing) => (
 
                 <TableRow
                   key={filing.id}
-                  className="border-border"
                 >
 
+                  {/* MEMBER */}
                   <TableCell>
 
                     <div>
 
-                      <div className="font-medium text-primary">
-                        {filing.id || "No ID"}
-                      </div>
-
-                      <div className="text-sm text-text-light">
-                        Recently Updated
-                      </div>
-
-                    </div>
-
-                  </TableCell>
-
-                  <TableCell>
-
-                    <div>
-
-                      <div className="font-medium">
-                        {filing.customer_name || "No Customer"}
+                      <div className="font-semibold text-lg">
+                        {
+                          filing.member_name
+                        }
                       </div>
 
                       <div className="text-sm text-text-mid">
-                        {filing.customer_phone || "No Phone"}
+                        {
+                          filing.relationship ||
+                          "Self"
+                        }
                       </div>
 
                     </div>
 
                   </TableCell>
 
+
+
+
+
+                  {/* CUSTOMER */}
                   <TableCell>
 
-                    <Badge
-                      variant="outline"
-                      className="rounded-lg"
-                    >
-                      {filing.filing_type || "ITR"}
-                    </Badge>
+                    <div className="font-medium">
+                      {
+                        filing.customer_name
+                      }
+                    </div>
 
                   </TableCell>
 
+
+
+
+
+                  {/* YEAR */}
+                  <TableCell>
+
+                    {
+                      filing.assessment_year
+                    }
+
+                  </TableCell>
+
+
+
+
+
+                  {/* FILING STATUS */}
                   <TableCell>
 
                     <Badge
                       className={`rounded-lg border ${getStatusColor(
-                        filing.status || "Pending"
+                        filing.status
                       )}`}
                     >
-                      {filing.status || "Pending"}
+                      {filing.status}
                     </Badge>
 
                   </TableCell>
 
+
+
+
+
+                  {/* PAYMENT STATUS */}
                   <TableCell>
 
-                    <div className="flex items-center gap-2">
+                    <select
 
-                      <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                      value={
+                        filing.payment_status ||
+                        "Unpaid"
+                      }
 
-                        <div
-                          className="h-full bg-gradient-to-r from-primary to-accent"
-                          style={{ width: "50%" }}
-                        />
+                      onChange={(e) =>
 
-                      </div>
+                        updatePaymentStatus(
 
-                      <span className="text-sm text-text-mid min-w-[3rem]">
-                        50%
-                      </span>
+                          filing.id,
+                          e.target.value
+                        )
+                      }
 
-                    </div>
+                      className={`px-3 py-2 rounded-xl text-sm font-medium border outline-none ${getPaymentColor(
+                        filing.payment_status ||
+                        "Unpaid"
+                      )}`}
+                    >
+
+                      <option value="Unpaid">
+                        Unpaid
+                      </option>
+
+                      <option value="Paid">
+                        Paid
+                      </option>
+
+                    </select>
 
                   </TableCell>
 
+
+
+
+
+                  {/* WORKSPACE */}
                   <TableCell>
 
-                    <DropdownMenu>
+                    <Link
+                      to={`/filings/${filing.id}`}
+                    >
 
-                      <DropdownMenuTrigger asChild>
+                      <Button className="rounded-xl">
 
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 rounded-lg"
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
+                        Open
 
-                      </DropdownMenuTrigger>
+                        <ExternalLink className="w-4 h-4 ml-2" />
 
-                      <DropdownMenuContent align="end">
+                      </Button>
 
-                        <DropdownMenuItem asChild>
-
-                          <Link
-                            to={`/filings/${filing.id}`}
-                            className="cursor-pointer"
-                          >
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Details
-                          </Link>
-
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                          <UserPlus className="w-4 h-4 mr-2" />
-                          Assign Operator
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                          <FileUp className="w-4 h-4 mr-2" />
-                          Upload Acknowledgement
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Mark Completed
-                        </DropdownMenuItem>
-
-                      </DropdownMenuContent>
-
-                    </DropdownMenu>
+                    </Link>
 
                   </TableCell>
 

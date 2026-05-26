@@ -10,6 +10,7 @@ import { getPool } from "../config/db.js";
 import {
 
   getDocumentFolders,
+  getCustomerFilings,
   getDocumentsByFiling,
 
 } from "../controllers/documentController.js";
@@ -20,8 +21,9 @@ const router = express.Router();
 
 
 
-
-// GET DOCUMENT FOLDERS
+// ==========================================
+// GET CUSTOMER FOLDERS
+// ==========================================
 router.get(
 
   "/folders",
@@ -36,9 +38,26 @@ router.get(
 
 
 
+// ==========================================
+// GET ALL MEMBER FILINGS
+// ==========================================
+router.get(
+
+  "/customer/:customerId",
+
+  authMiddleware,
+  adminMiddleware,
+
+  getCustomerFilings
+);
 
 
-// GET DOCUMENTS OF SINGLE FILING
+
+
+
+// ==========================================
+// GET SINGLE FILING DOCUMENTS
+// ==========================================
 router.get(
 
   "/filing/:filingId",
@@ -53,10 +72,9 @@ router.get(
 
 
 
-
-
-
+// ==========================================
 // UPLOAD DOCUMENT
+// ==========================================
 router.post(
 
   "/upload",
@@ -82,8 +100,6 @@ router.post(
 
 
 
-
-
       // FIND CUSTOMER
       const customerResult =
       await getPool().query(
@@ -98,8 +114,6 @@ router.post(
 
         [email]
       );
-
-
 
 
 
@@ -125,8 +139,6 @@ router.post(
 
 
 
-
-
       // FILE DATA
       const fileUrl =
       req.file.path;
@@ -139,8 +151,6 @@ router.post(
 
       const fileSize =
       req.file.size?.toString();
-
-
 
 
 
@@ -184,8 +194,6 @@ router.post(
 
         ]
       );
-
-
 
 
 

@@ -2,7 +2,9 @@ import { getPool } from "../config/db.js";
 
 
 
-// GET ALL DOCUMENT FOLDERS
+// ==========================================
+// GET CUSTOMER FOLDERS
+// ==========================================
 export const getDocumentFolders =
 async (req, res) => {
 
@@ -14,31 +16,35 @@ async (req, res) => {
       `
       SELECT
 
-        filings.id,
-        filings.status,
-
-        customers.name AS customer_name,
+        customers.id,
+        customers.name,
+        customers.email,
+        customers.phone,
         customers.pan_number,
 
-        COUNT(documents.id) AS document_count
+        COUNT(DISTINCT filings.id)
+        AS filing_count,
 
-      FROM filings
+        COUNT(documents.id)
+        AS document_count
 
-      LEFT JOIN customers
-      ON filings.customer_id = customers.id
+      FROM customers
+
+      LEFT JOIN filings
+      ON customers.id = filings.customer_id
 
       LEFT JOIN documents
       ON filings.id = documents.filing_id
 
       GROUP BY
 
-        filings.id,
-        filings.status,
-
+        customers.id,
         customers.name,
+        customers.email,
+        customers.phone,
         customers.pan_number
 
-      ORDER BY filings.created_at DESC
+      ORDER BY customers.created_at DESC
       `
     );
 
@@ -69,7 +75,84 @@ async (req, res) => {
 
 
 
-// GET SINGLE FILING DOCUMENTS
+
+
+// ==========================================
+// GET ALL MEMBER FILINGS OF CUSTOMER
+// ==========================================
+export const getCustomerFilings =
+async (req, res) => {
+
+  try {
+
+    const { customerId } = req.params;
+
+
+
+
+
+    const result =
+    await getPool().query(
+
+      `
+      SELECT
+
+        filings.*,
+
+        COUNT(documents.id)
+        AS document_count
+
+      FROM filings
+
+      LEFT JOIN documents
+      ON filings.id = documents.filing_id
+
+      WHERE filings.customer_id = $1
+
+      GROUP BY filings.id
+
+      ORDER BY filings.created_at DESC
+      `,
+
+      [customerId]
+    );
+
+
+
+
+
+    return res.json({
+
+      success: true,
+
+      filings: result.rows,
+
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    return res.status(500).json({
+
+      success: false,
+      error: error.message,
+
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
+// ==========================================
+// GET DOCUMENTS OF SINGLE FILING
+// ==========================================
 export const getDocumentsByFiling =
 async (req, res) => {
 
@@ -81,32 +164,20 @@ async (req, res) => {
 
 
 
-
-    // GET FILING + CUSTOMER
+    // GET FILING
     const filingResult =
     await getPool().query(
 
       `
-      SELECT
-
-        filings.*,
-
-        customers.name AS customer_name,
-        customers.email AS customer_email,
-        customers.phone AS customer_phone,
-        customers.pan_number
+      SELECT *
 
       FROM filings
 
-      LEFT JOIN customers
-      ON filings.customer_id = customers.id
-
-      WHERE filings.id = $1
+      WHERE id = $1
       `,
 
       [filingId]
     );
-
 
 
 
@@ -129,7 +200,6 @@ async (req, res) => {
 
 
 
-
     // GET DOCUMENTS
     const documentsResult =
     await getPool().query(
@@ -146,8 +216,6 @@ async (req, res) => {
 
       [filingId]
     );
-
-
 
 
 

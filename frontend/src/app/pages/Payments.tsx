@@ -1,8 +1,18 @@
+
 import { useEffect, useState } from "react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { auth } from "../../lib/firebase";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+
+import { Input } from "../components/ui/input";
 
 import {
   Table,
@@ -14,336 +24,416 @@ import {
 } from "../components/ui/table";
 
 import {
+  Search,
+  IndianRupee,
   CheckCircle,
-  X,
-  Eye,
-  Download,
+  Clock,
 } from "lucide-react";
 
-import { exportToCSV } from "../utils/exportUtils";
+const getPaymentColor = (
+  status: string
+) => {
 
-import { auth } from "../../lib/firebase";
+  const colors: Record<string, string> = {
 
-interface Payment {
-  id: string;
-  amount: number;
-  payment_status: string;
-  payment_method: string;
-  payment_date: string;
-  customer_name: string;
-  customer_email: string;
-  customer_phone: string;
-  filing_type: string;
-}
+    Pending:
+      "bg-amber-100 text-amber-700 border-amber-200",
+
+    Completed:
+      "bg-green-100 text-green-700 border-green-200",
+
+    Failed:
+      "bg-red-100 text-red-700 border-red-200",
+  };
+
+  return (
+    colors[status] ||
+    "bg-gray-100 text-gray-700 border-gray-200"
+  );
+};
 
 export function Payments() {
 
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] =
+    useState<any[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [searchTerm, setSearchTerm] =
+    useState("");
+
+
+
+
+  useEffect(() => {
+
+    fetchPayments();
+
+  }, []);
+
+
+
 
   const fetchPayments = async () => {
+
     try {
 
-      const token = await auth.currentUser?.getIdToken();
+      const token =
+      await auth.currentUser?.getIdToken();
 
-      const response = await fetch(
+
+
+
+
+      const response =
+      await fetch(
+
         "http://localhost:5000/payments",
+
         {
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization:
+            `Bearer ${token}`,
           },
         }
       );
 
-      const data = await response.json();
+      const data =
+      await response.json();
 
-      console.log(data);
+
+
+
 
       if (data.success) {
+
         setPayments(data.payments);
       }
 
     } catch (error) {
+
       console.log(error);
+
+    } finally {
+
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchPayments();
-  }, []);
 
-  const updatePaymentStatus = async (
-    paymentId: string,
-    status: string
-  ) => {
 
-    try {
 
-      const token = await auth.currentUser?.getIdToken();
+  const filteredPayments =
+  payments.filter((payment) => {
 
-      const response = await fetch(
-        `http://localhost:5000/payments/${paymentId}`,
-        {
-          method: "PUT",
+    const search =
+    searchTerm.toLowerCase();
 
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+    return (
 
-          body: JSON.stringify({
-            payment_status: status,
-          }),
-        }
-      );
+      payment.customer_name
+        ?.toLowerCase()
+        .includes(search)
 
-      const data = await response.json();
+      ||
 
-      console.log(data);
+      payment.member_name
+        ?.toLowerCase()
+        .includes(search)
 
-      fetchPayments();
+      ||
 
-    } catch (error) {
-      console.log(error);
-    }
-  };
+      payment.filing_type
+        ?.toLowerCase()
+        .includes(search)
 
-  const handleExport = () => {
+      ||
 
-    const exportData = payments.map((payment) => ({
-      Customer: payment.customer_name,
-      Email: payment.customer_email,
-      Phone: payment.customer_phone,
-      Amount: payment.amount,
-      Status: payment.payment_status,
-      Method: payment.payment_method,
-      FilingType: payment.filing_type,
-    }));
+      payment.payment_status
+        ?.toLowerCase()
+        .includes(search)
+    );
+  });
 
-    exportToCSV(exportData, "payments");
-  };
+
+
+
+  if (loading) {
+
+    return (
+
+      <div className="p-10 text-center">
+        Loading payments...
+      </div>
+    );
+  }
+
+
+
 
   return (
+
     <div className="space-y-6">
 
-      <div className="flex items-center justify-between">
+      {/* HEADER */}
+      <div>
 
-        <div>
-          <h1 className="text-3xl font-semibold text-text-dark">
-            Payment Management
-          </h1>
+        <h1 className="text-3xl font-semibold text-text-dark">
+          Payment Management
+        </h1>
 
-          <p className="text-text-mid mt-1">
-            Track and verify all payment transactions
-          </p>
-        </div>
-
-        <Button
-          className="rounded-xl bg-gradient-to-r from-primary to-primary-dark"
-          onClick={handleExport}
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Export to CSV
-        </Button>
+        <p className="text-text-mid mt-1">
+          Track completed and pending filing payments
+        </p>
 
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 
-        <Card className="rounded-2xl border-0 shadow-sm">
-          <CardContent className="pt-6">
-            <p className="text-sm text-text-light">
-              Total Payments
-            </p>
 
-            <p className="text-3xl font-semibold text-text-dark mt-1">
-              {payments.length}
-            </p>
 
-            <p className="text-sm text-green-600 mt-2">
-              Live Database
-            </p>
-          </CardContent>
-        </Card>
 
-        <Card className="rounded-2xl border-0 shadow-sm">
-          <CardContent className="pt-6">
-            <p className="text-sm text-text-light">
-              Completed
-            </p>
+      {/* SEARCH */}
+      <Card className="rounded-2xl border-0 shadow-sm">
 
-            <p className="text-3xl font-semibold text-text-dark mt-1">
-              {
-                payments.filter(
-                  (p) => p.payment_status === "Completed"
-                ).length
+        <CardContent className="pt-6">
+
+          <div className="relative">
+
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
+
+            <Input
+              placeholder="Search customer, member, filing type..."
+              value={searchTerm}
+              onChange={(e) =>
+                setSearchTerm(e.target.value)
               }
-            </p>
+              className="pl-10 rounded-xl bg-secondary border-0"
+            />
 
-            <p className="text-sm text-green-600 mt-2">
-              Verified Payments
-            </p>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card className="rounded-2xl border-0 shadow-sm">
-          <CardContent className="pt-6">
-            <p className="text-sm text-text-light">
-              Pending
-            </p>
+        </CardContent>
 
-            <p className="text-3xl font-semibold text-text-dark mt-1">
-              {
-                payments.filter(
-                  (p) => p.payment_status === "Pending"
-                ).length
-              }
-            </p>
+      </Card>
 
-            <p className="text-sm text-amber-600 mt-2">
-              Awaiting Verification
-            </p>
-          </CardContent>
-        </Card>
 
-        <Card className="rounded-2xl border-0 shadow-sm">
-          <CardContent className="pt-6">
-            <p className="text-sm text-text-light">
-              Total Revenue
-            </p>
 
-            <p className="text-3xl font-semibold text-text-dark mt-1">
-              ₹
-              {
-                payments.reduce(
-                  (total, payment) =>
-                    total + Number(payment.amount),
-                  0
-                )
-              }
-            </p>
 
-            <p className="text-sm text-text-mid mt-2">
-              Real Payments
-            </p>
-          </CardContent>
-        </Card>
 
-      </div>
-
+      {/* TABLE */}
       <Card className="rounded-2xl border-0 shadow-sm">
 
         <CardHeader>
+
           <CardTitle>
-            Recent Payments
+            All Payments ({filteredPayments.length})
           </CardTitle>
+
         </CardHeader>
+
+
+
+
 
         <CardContent>
 
           <Table>
 
             <TableHeader>
+
               <TableRow className="hover:bg-transparent border-border">
 
-                <TableHead>Customer</TableHead>
+                <TableHead>
+                  Member
+                </TableHead>
 
-                <TableHead>Phone</TableHead>
+                <TableHead>
+                  Customer
+                </TableHead>
 
-                <TableHead>Amount</TableHead>
+                <TableHead>
+                  Filing Type
+                </TableHead>
 
-                <TableHead>Method</TableHead>
+                <TableHead>
+                  Assessment Year
+                </TableHead>
 
-                <TableHead>Filing Type</TableHead>
+                <TableHead>
+                  Amount
+                </TableHead>
 
-                <TableHead>Status</TableHead>
+                <TableHead>
+                  Status
+                </TableHead>
 
-                <TableHead>Actions</TableHead>
+                <TableHead>
+                  Payment Date
+                </TableHead>
 
               </TableRow>
+
             </TableHeader>
+
+
+
+
 
             <TableBody>
 
-              {payments.map((payment) => (
+              {filteredPayments.map((payment: any) => (
 
                 <TableRow
                   key={payment.id}
                   className="border-border"
                 >
 
-                  <TableCell className="font-medium">
-                    {payment.customer_name}
-                  </TableCell>
-
+                  {/* MEMBER */}
                   <TableCell>
-                    {payment.customer_phone}
+
+                    <div>
+
+                      <div className="font-semibold text-text-dark">
+
+                        {
+                          payment.member_name
+                          || "Unknown Member"
+                        }
+
+                      </div>
+
+
+
+
+
+                      <div className="text-sm text-text-mid">
+
+                        {
+                          payment.relationship
+                          || "Self"
+                        }
+
+                      </div>
+
+                    </div>
+
                   </TableCell>
 
-                  <TableCell className="font-semibold">
-                    ₹{payment.amount}
-                  </TableCell>
 
+
+
+
+                  {/* CUSTOMER */}
                   <TableCell>
-                    {payment.payment_method}
+
+                    <div className="font-medium">
+
+                      {
+                        payment.customer_name
+                      }
+
+                    </div>
+
                   </TableCell>
 
-                  <TableCell>
-                    {payment.filing_type}
-                  </TableCell>
 
+
+
+
+                  {/* FILING TYPE */}
                   <TableCell>
 
                     <Badge
-                      className={`rounded-lg ${
-                        payment.payment_status === "Completed"
-                          ? "bg-green-100 text-green-700 border-green-200"
-                          : "bg-amber-100 text-amber-700 border-amber-200"
-                      }`}
+                      variant="outline"
+                      className="rounded-lg"
                     >
-                      {payment.payment_status}
+                      {
+                        payment.filing_type
+                      }
                     </Badge>
 
                   </TableCell>
 
+
+
+
+
+                  {/* YEAR */}
                   <TableCell>
 
-                    <div className="flex gap-2">
+                    {
+                      payment.assessment_year
+                    }
 
-                      {payment.payment_status !== "Completed" && (
+                  </TableCell>
 
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-green-600"
-                          onClick={() =>
-                            updatePaymentStatus(
-                              payment.id,
-                              "Completed"
-                            )
-                          }
-                        >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Verify
-                        </Button>
 
-                      )}
 
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600"
-                        onClick={() =>
-                          updatePaymentStatus(
-                            payment.id,
-                            "Failed"
-                          )
-                        }
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
 
+
+                  {/* AMOUNT */}
+                  <TableCell>
+
+                    <div className="flex items-center gap-1 font-medium">
+
+                      <IndianRupee className="w-4 h-4" />
+
+                      {
+                        payment.amount || 0
+                      }
 
                     </div>
+
+                  </TableCell>
+
+
+
+
+
+                  {/* STATUS */}
+                  <TableCell>
+
+                    <Badge
+                      className={`rounded-lg border ${getPaymentColor(
+                        payment.payment_status
+                      )}`}
+                    >
+
+                      <div className="flex items-center gap-1">
+
+                        {
+                          payment.payment_status === "Completed"
+                          ? (
+                            <CheckCircle className="w-3 h-3" />
+                          ) : (
+                            <Clock className="w-3 h-3" />
+                          )
+                        }
+
+                        {
+                          payment.payment_status
+                        }
+
+                      </div>
+
+                    </Badge>
+
+                  </TableCell>
+
+
+
+
+
+                  {/* DATE */}
+                  <TableCell>
+
+                    {
+                      payment.payment_date
+                      ? new Date(payment.payment_date)
+                        .toLocaleDateString()
+                      : "N/A"
+                    }
 
                   </TableCell>
 

@@ -82,57 +82,51 @@ export function Documents() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
 
-          {filings.map((filing) => (
+          {filings.map((customer) => (
 
             <Card
-              key={filing.id}
-              className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-all"
-            >
-              <CardContent className="p-6">
+  key={customer.id}
+  className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-all"
+>
+  <CardContent className="p-6">
 
-                <div className="flex items-start justify-between mb-5">
+    <div className="flex items-start justify-between mb-5">
 
-                  <div className="p-4 bg-primary-light rounded-2xl">
-                    <FolderOpen className="w-10 h-10 text-primary" />
-                  </div>
+      <div className="p-4 bg-primary-light rounded-2xl">
+        <FolderOpen className="w-10 h-10 text-primary" />
+      </div>
 
-                  <Badge
-                    className={
-                      filing.status === "Completed"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-amber-100 text-amber-700"
-                    }
-                  >
-                    {filing.status}
-                  </Badge>
+      <Badge className="bg-blue-100 text-blue-700">
+        {customer.filing_count} Filings
+      </Badge>
 
-                </div>
+    </div>
 
-                <h3 className="text-xl font-semibold text-text-dark mb-1">
-                  {filing.customer_name}
-                </h3>
+    <h3 className="text-xl font-semibold text-text-dark mb-1">
+      {customer.name}
+    </h3>
 
-                <p className="text-sm text-text-mid mb-2">
-                  PAN: {filing.pan_number || "N/A"}
-                </p>
+    <p className="text-sm text-text-mid mb-2">
+      PAN: {customer.pan_number || "N/A"}
+    </p>
 
-                <div className="flex items-center gap-2 text-text-light text-sm mb-4">
-                  <FileText className="w-4 h-4" />
-                  {filing.document_count} Documents
-                </div>
+    <div className="flex items-center gap-2 text-text-light text-sm mb-4">
+      <FileText className="w-4 h-4" />
+      {customer.document_count} Documents
+    </div>
 
-                <Button
-                  className="w-full rounded-xl"
-                  onClick={() =>
-                    navigate(`/document-details/${filing.id}`)
-                  }
-                >
-                  Open Folder
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+    <Button
+      className="w-full rounded-xl"
+      onClick={() =>
+        navigate(`/document-details/${customer.id}`)
+      }
+    >
+      Open Customer Folder
+      <ArrowRight className="w-4 h-4 ml-2" />
+    </Button>
 
-              </CardContent>
-            </Card>
+  </CardContent>
+</Card>
 
           ))}
 

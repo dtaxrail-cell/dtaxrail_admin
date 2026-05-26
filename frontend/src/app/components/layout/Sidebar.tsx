@@ -18,7 +18,6 @@ import { cn } from "../ui/utils";
 import { useState } from "react";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: FileText, label: "Filings", path: "/filings" },
   { icon: Users, label: "Customers", path: "/customers" },
   { icon: CreditCard, label: "Payments", path: "/payments" },
@@ -27,8 +26,6 @@ const menuItems = [
   { icon: MessageSquare, label: "Support", path: "/support" },
   { icon: Bell, label: "Notifications", path: "/notifications" },
   { icon: Calculator, label: "Tax Tools", path: "/tax-tools" },
-  { icon: Settings, label: "Settings", path: "/settings" },
-  { icon: Activity, label: "Logs", path: "/logs" },
 ];
 
 export function Sidebar() {

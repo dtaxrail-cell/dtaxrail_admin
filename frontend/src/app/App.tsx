@@ -1,39 +1,67 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
+
 import { Login } from "./pages/Login";
-import { Dashboard } from "./pages/Dashboard";
+
 import { Filings } from "./pages/Filings";
 import { FilingDetails } from "./pages/FilingDetails";
+
 import { Customers } from "./pages/Customers";
 import { Payments } from "./pages/Payments";
+
 import { Documents } from "./pages/Documents";
+import { DocumentDetails } from "./pages/DocumentDetails";
+
 import { Callbacks } from "./pages/Callbacks";
 import { Support } from "./pages/Support";
 import { Notifications } from "./pages/Notifications";
 import { TaxTools } from "./pages/TaxTools";
-import { Settings } from "./pages/Settings";
-import { Logs } from "./pages/Logs";
+
 import { MainLayout } from "./components/layout/MainLayout";
+
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+
 import { Toaster } from "./components/ui/sonner";
-import { DocumentDetails } from "./pages/DocumentDetails";
+
+
+
+
 
 export default function App() {
+
   return (
+
     <AuthProvider>
+
       <BrowserRouter>
+
         <Routes>
-          <Route path="/login" element={<Login />} />
+
+
+
+
+
+          {/* LOGIN */}
           <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Dashboard />
-                </MainLayout>
-              </ProtectedRoute>
-            }
+            path="/login"
+            element={<Login />}
           />
+
+
+
+
+
+          {/* REDIRECT ROOT */}
+          <Route
+  path="/"
+  element={<Navigate to="/filings" replace />}
+/>
+
+
+
+
+
+          {/* FILINGS */}
           <Route
             path="/filings"
             element={
@@ -44,8 +72,14 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+
+
+
+
+          {/* FILING DETAILS */}
           <Route
-  path="/filings/:filingId"
+            path="/filings/:filingId"
             element={
               <ProtectedRoute>
                 <MainLayout>
@@ -54,6 +88,12 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+
+
+
+
+          {/* CUSTOMERS */}
           <Route
             path="/customers"
             element={
@@ -64,6 +104,12 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+
+
+
+
+          {/* PAYMENTS */}
           <Route
             path="/payments"
             element={
@@ -74,6 +120,12 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+
+
+
+
+          {/* DOCUMENTS */}
           <Route
             path="/documents"
             element={
@@ -84,6 +136,28 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+
+
+
+
+          {/* DOCUMENT DETAILS */}
+          <Route
+            path="/document-details/:filingId"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <DocumentDetails />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+
+
+
+
+          {/* CALLBACKS */}
           <Route
             path="/callbacks"
             element={
@@ -94,6 +168,12 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+
+
+
+
+          {/* SUPPORT */}
           <Route
             path="/support"
             element={
@@ -104,6 +184,12 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+
+
+
+
+          {/* NOTIFICATIONS */}
           <Route
             path="/notifications"
             element={
@@ -114,6 +200,12 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+
+
+
+
+          {/* TAX TOOLS */}
           <Route
             path="/tax-tools"
             element={
@@ -124,39 +216,17 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Settings />
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/logs"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Logs />
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-  path="/document-details/:filingId"
-  element={
-    <ProtectedRoute>
-      <MainLayout>
-        <DocumentDetails />
-      </MainLayout>
-    </ProtectedRoute>
-  }
-/>
+
         </Routes>
+
+
+
+
+
         <Toaster />
+
       </BrowserRouter>
+
     </AuthProvider>
   );
 }

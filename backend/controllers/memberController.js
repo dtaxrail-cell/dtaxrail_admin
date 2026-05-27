@@ -2,7 +2,9 @@ import { getPool } from "../config/db.js";
 
 
 
+// ==========================================
 // CREATE MEMBER
+// ==========================================
 export const createMember =
 async (req, res) => {
 
@@ -23,9 +25,6 @@ async (req, res) => {
 
 
 
-
-
-    // FIND CUSTOMER
     const customerResult =
     await getPool().query(
 
@@ -55,9 +54,6 @@ async (req, res) => {
 
 
 
-
-
-    // CREATE MEMBER
     const result =
     await getPool().query(
 
@@ -98,9 +94,7 @@ async (req, res) => {
     return res.status(201).json({
 
       success: true,
-
-      member:
-      result.rows[0],
+      member: result.rows[0],
 
     });
 
@@ -119,7 +113,9 @@ async (req, res) => {
 
 
 
+// ==========================================
 // GET MEMBERS
+// ==========================================
 export const getMembers =
 async (req, res) => {
 
@@ -127,11 +123,6 @@ async (req, res) => {
 
     const { uid } = req.user;
 
-
-
-
-
-    // FIND CUSTOMER
     const customerResult =
     await getPool().query(
 
@@ -161,9 +152,6 @@ async (req, res) => {
 
 
 
-
-
-    // GET MEMBERS
     const result =
     await getPool().query(
 
@@ -180,9 +168,7 @@ async (req, res) => {
     return res.json({
 
       success: true,
-
-      members:
-      result.rows,
+      members: result.rows,
 
     });
 
@@ -196,5 +182,231 @@ async (req, res) => {
       error: error.message,
 
     });
+  }
+};
+
+
+
+// ==========================================
+// UPDATE MEMBER
+// ==========================================
+export const updateMember =
+async (req, res) => {
+
+  try {
+
+    const { memberId } = req.params;
+
+    const {
+
+      full_name,
+      pan_number,
+      phone,
+      email,
+      relationship,
+      date_of_birth,
+
+    } = req.body;
+
+    const result =
+    await getPool().query(
+
+      `
+      UPDATE members
+
+      SET
+
+        full_name = $1,
+        pan_number = $2,
+        phone = $3,
+        email = $4,
+        relationship = $5,
+        date_of_birth = $6
+
+      WHERE id = $7
+
+      RETURNING *
+      `,
+
+      [
+
+        full_name,
+        pan_number,
+        phone,
+        email,
+        relationship,
+        date_of_birth,
+
+        memberId,
+
+      ]
+    );
+
+    return res.json({
+
+      success: true,
+      member: result.rows[0],
+
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    return res.status(500).json({
+
+      success: false,
+      error: error.message,
+
+    });
+  }
+};
+
+
+
+// ==========================================
+// DELETE MEMBER
+// ==========================================
+export const deleteMember =
+async (req, res) => {
+
+  const client =
+  await getPool().connect();
+
+  try {
+
+    await client.query("BEGIN");
+
+    const { memberId } =
+    req.params;
+
+
+
+    // GET FILINGS
+    const filingsResult =
+    await client.query(
+
+      `
+      SELECT id
+      FROM filings
+      WHERE member_id = $1
+      `,
+
+      [memberId]
+    );
+
+    const filings =
+    filingsResult.rows;
+
+
+
+    // DELETE ALL RELATED DATA
+    for (const filing of filings) {
+
+      const filingId =
+      filing.id;
+
+
+
+      await client.query(
+
+        `
+        DELETE FROM filing_results
+        WHERE filing_id = $1
+        `,
+
+        [filingId]
+      );
+
+
+
+      await client.query(
+
+        `
+        DELETE FROM filing_messages
+        WHERE filing_id = $1
+        `,
+
+        [filingId]
+      );
+
+
+
+      await client.query(
+
+        `
+        DELETE FROM filing_status_history
+        WHERE filing_id = $1
+        `,
+
+        [filingId]
+      );
+
+
+
+      await client.query(
+
+        `
+        DELETE FROM documents
+        WHERE filing_id = $1
+        `,
+
+        [filingId]
+      );
+    }
+
+
+
+    // DELETE FILINGS
+    await client.query(
+
+      `
+      DELETE FROM filings
+      WHERE member_id = $1
+      `,
+
+      [memberId]
+    );
+
+
+
+    // DELETE MEMBER
+    await client.query(
+
+      `
+      DELETE FROM members
+      WHERE id = $1
+      `,
+
+      [memberId]
+    );
+
+
+
+    await client.query("COMMIT");
+
+    return res.json({
+
+      success: true,
+      message: "Member deleted successfully",
+
+    });
+
+  } catch (error) {
+
+    await client.query("ROLLBACK");
+
+    console.log(error);
+
+    return res.status(500).json({
+
+      success: false,
+      error: error.message,
+
+    });
+
+  } finally {
+
+    client.release();
   }
 };

@@ -80,16 +80,15 @@ async (req, res) => {
 // ==========================================
 // GET ALL MEMBER FILINGS OF CUSTOMER
 // ==========================================
+// ==========================================
+// GET ALL MEMBER FILINGS OF CUSTOMER
+// ==========================================
 export const getCustomerFilings =
 async (req, res) => {
 
   try {
 
     const { customerId } = req.params;
-
-
-
-
 
     const result =
     await getPool().query(
@@ -99,27 +98,35 @@ async (req, res) => {
 
         filings.*,
 
+        members.full_name AS member_name,
+        members.pan_number AS member_pan,
+        members.phone AS member_phone,
+        members.email AS member_email,
+        members.relationship AS relationship,
+
         COUNT(documents.id)
         AS document_count
 
       FROM filings
+
+      LEFT JOIN members
+      ON filings.member_id = members.id
 
       LEFT JOIN documents
       ON filings.id = documents.filing_id
 
       WHERE filings.customer_id = $1
 
-      GROUP BY filings.id
+      GROUP BY
+
+        filings.id,
+        members.id
 
       ORDER BY filings.created_at DESC
       `,
 
       [customerId]
     );
-
-
-
-
 
     return res.json({
 
@@ -141,7 +148,6 @@ async (req, res) => {
     });
   }
 };
-
 
 
 

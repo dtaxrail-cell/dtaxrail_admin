@@ -14,7 +14,7 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import documentRoutes from "./routes/documentRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
-
+import memberRoutes from "./routes/memberRoutes.js";
 
 const app = express();
 
@@ -27,6 +27,7 @@ app.use("/payments", paymentRoutes);
 app.use("/documents", documentRoutes);
 app.use("/notifications", notificationRoutes);
 app.use("/dashboard", dashboardRoutes);
+app.use("/members", memberRoutes);
 
 app.get("/", async (req, res) => {
   try {

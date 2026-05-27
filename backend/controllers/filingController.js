@@ -8,25 +8,40 @@ export const getFilings = async (req, res) => {
   try {
 
     const result = await getPool().query(`
+
       SELECT
+
         filings.*,
 
         customers.name AS customer_name,
         customers.email AS customer_email,
-        customers.phone AS customer_phone
+        customers.phone AS customer_phone,
+
+        members.full_name AS member_name,
+        members.pan_number AS member_pan,
+        members.relationship AS relationship
 
       FROM filings
 
       LEFT JOIN customers
       ON filings.customer_id = customers.id
 
+      LEFT JOIN members
+      ON filings.member_id = members.id
+
       ORDER BY filings.created_at DESC
+
     `);
 
     res.json({
+
       success: true,
-      count: result.rows.length,
-      filings: result.rows,
+
+      count:
+      result.rows.length,
+
+      filings:
+      result.rows,
     });
 
   } catch (error) {
@@ -34,13 +49,12 @@ export const getFilings = async (req, res) => {
     console.log(error);
 
     res.status(500).json({
+
       success: false,
       error: error.message,
     });
   }
 };
-
-
 
 
 
@@ -55,11 +69,7 @@ export const createFiling = async (req, res) => {
       assessment_year,
       notes,
 
-      member_name,
-      member_pan,
-      member_phone,
-      member_email,
-      relationship,
+      member_id,
 
     } = req.body;
 
@@ -78,12 +88,9 @@ export const createFiling = async (req, res) => {
       FROM customers
       WHERE email = $1
       `,
+
       [email]
     );
-
-
-
-
 
     if (
       customerResult.rows.length === 0
@@ -92,7 +99,9 @@ export const createFiling = async (req, res) => {
       return res.status(404).json({
 
         success: false,
-        message: "Customer not found",
+
+        message:
+        "Customer not found",
 
       });
     }
@@ -101,6 +110,35 @@ export const createFiling = async (req, res) => {
     customerResult.rows[0];
 
 
+
+
+
+    // VERIFY MEMBER
+    const memberResult =
+    await getPool().query(
+
+      `
+      SELECT *
+      FROM members
+      WHERE id = $1
+      `,
+
+      [member_id]
+    );
+
+    if (
+      memberResult.rows.length === 0
+    ) {
+
+      return res.status(404).json({
+
+        success: false,
+
+        message:
+        "Member not found",
+
+      });
+    }
 
 
 
@@ -114,25 +152,19 @@ export const createFiling = async (req, res) => {
       INSERT INTO filings (
 
         customer_id,
+        member_id,
 
         filing_type,
         assessment_year,
 
         notes,
         status,
-        progress,
-
-        member_name,
-        member_pan,
-        member_phone,
-        member_email,
-        relationship
+        progress
 
       )
 
       VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10, $11
+        $1, $2, $3, $4, $5, $6, $7
       )
 
       RETURNING *
@@ -141,27 +173,19 @@ export const createFiling = async (req, res) => {
       [
 
         customer.id,
+        member_id,
 
         filing_type,
         assessment_year,
 
         notes || null,
-        "Pending",
-        0,
 
-        member_name,
-        member_pan,
-        member_phone,
-        member_email,
-        relationship,
+        "Pending",
+
+        0,
 
       ]
     );
-
-
-
-
-
 
     return res.status(201).json({
 
@@ -186,6 +210,7 @@ export const createFiling = async (req, res) => {
 };
 
 
+
 export const getSingleFiling =
 async (req, res) => {
 
@@ -204,12 +229,21 @@ async (req, res) => {
 
         customers.name AS customer_name,
         customers.email AS customer_email,
-        customers.phone AS customer_phone
+        customers.phone AS customer_phone,
+
+        members.full_name AS member_name,
+        members.pan_number AS member_pan,
+        members.phone AS member_phone,
+        members.email AS member_email,
+        members.relationship AS relationship
 
       FROM filings
 
       LEFT JOIN customers
       ON filings.customer_id = customers.id
+
+      LEFT JOIN members
+      ON filings.member_id = members.id
 
       WHERE filings.id = $1
       `,
@@ -217,15 +251,24 @@ async (req, res) => {
       [filingId]
     );
 
-    if (filingResult.rows.length === 0) {
+    if (
+      filingResult.rows.length === 0
+    ) {
 
       return res.status(404).json({
 
         success: false,
-        message: "Filing not found",
+
+        message:
+        "Filing not found",
 
       });
     }
+
+
+
+
+
 
     // GET DOCUMENTS
     const documentsResult =
@@ -241,6 +284,10 @@ async (req, res) => {
       [filingId]
     );
 
+
+
+
+
     // GET MESSAGES
     const messagesResult =
     await getPool().query(
@@ -254,6 +301,10 @@ async (req, res) => {
 
       [filingId]
     );
+
+
+
+
 
     // GET RESULTS
     const resultsResult =
@@ -299,6 +350,7 @@ async (req, res) => {
     });
   }
 };
+
 
 
 export const requestAdditionalDocument =
@@ -352,6 +404,7 @@ async (req, res) => {
 };
 
 
+
 export const updateFilingStatus =
 async (req, res) => {
 
@@ -360,6 +413,10 @@ async (req, res) => {
     const { filingId } = req.params;
 
     const { status } = req.body;
+
+
+
+
 
     // OLD STATUS
     const oldResult =
@@ -377,6 +434,10 @@ async (req, res) => {
     const oldStatus =
     oldResult.rows[0]?.status;
 
+
+
+
+
     // UPDATE
     await getPool().query(
 
@@ -388,6 +449,10 @@ async (req, res) => {
 
       [status, filingId]
     );
+
+
+
+
 
     // HISTORY
     await getPool().query(
@@ -432,6 +497,7 @@ async (req, res) => {
 };
 
 
+
 export const uploadFilingResult =
 async (req, res) => {
 
@@ -444,6 +510,10 @@ async (req, res) => {
 
     const fileName =
     req.file.originalname;
+
+
+
+
 
     await getPool().query(
 
@@ -465,6 +535,10 @@ async (req, res) => {
         fileUrl,
       ]
     );
+
+
+
+
 
     // UPDATE STATUS
     await getPool().query(

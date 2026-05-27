@@ -208,12 +208,7 @@ export function Documents() {
 
 
 
-                <p className="text-sm text-text-mid mb-2">
-
-                  PAN:
-                  {customer.pan_number || " N/A"}
-
-                </p>
+          
 
 
 

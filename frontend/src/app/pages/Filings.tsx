@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../../lib/firebase";
 
@@ -56,25 +57,25 @@ const getStatusColor = (status: string) => {
   );
 };
 
-
-
-
-
 const getPaymentColor = (
   status: string
 ) => {
 
-  if (status === "Paid") {
+  const colors: Record<string, string> = {
 
-    return "bg-green-100 text-green-700";
-  }
+    Paid:
+      "bg-green-100 text-green-700 border-green-200",
 
-  return "bg-red-100 text-red-700";
+    Unpaid:
+      "bg-red-100 text-red-700 border-red-200",
+
+  };
+
+  return (
+    colors[status] ||
+    "bg-gray-100 text-gray-700 border-gray-200"
+  );
 };
-
-
-
-
 
 export function Filings() {
 
@@ -84,7 +85,8 @@ export function Filings() {
   const [searchTerm, setSearchTerm] =
   useState("");
 
-
+  const [loading, setLoading] =
+  useState(true);
 
 
 
@@ -96,8 +98,6 @@ export function Filings() {
 
 
 
-
-
   const fetchFilings = async () => {
 
     try {
@@ -105,7 +105,7 @@ export function Filings() {
       const token =
       await auth.currentUser?.getIdToken();
 
-      const response = await fetch(
+      const filingsResponse = await fetch(
         "http://localhost:5000/filings",
         {
           headers: {
@@ -114,24 +114,58 @@ export function Filings() {
         }
       );
 
-      const data = await response.json();
+      const filingsData =
+      await filingsResponse.json();
 
 
 
+      const paymentsResponse = await fetch(
+        "http://localhost:5000/payments",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const paymentsData =
+      await paymentsResponse.json();
 
 
-      if (data.success) {
 
-        setFilings(data.filings);
+      if (filingsData.success) {
+
+        const mergedFilings =
+        filingsData.filings.map(
+          (filing: any) => {
+
+            const payment =
+            paymentsData.payments?.find(
+              (p: any) =>
+                p.filing_id === filing.id
+            );
+
+            return {
+              ...filing,
+              payment_status:
+                payment?.payment_status ||
+                "Unpaid",
+            };
+          }
+        );
+
+        setFilings(mergedFilings);
       }
 
     } catch (error) {
 
       console.log(error);
+
+    } finally {
+
+      setLoading(false);
     }
   };
-
-
 
 
 
@@ -146,51 +180,34 @@ export function Filings() {
       await auth.currentUser?.getIdToken();
 
       const response = await fetch(
-
         `http://localhost:5000/payments/filing/${filingId}`,
-
         {
-
           method: "PUT",
 
           headers: {
-
-            "Content-Type":
-              "application/json",
-
-            Authorization:
-              `Bearer ${token}`,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
           },
 
           body: JSON.stringify({
-
             payment_status:
               paymentStatus,
           }),
         }
       );
 
-      const data =
-      await response.json();
-
-
-
-
+      const data = await response.json();
 
       if (data.success) {
 
         setFilings((prev) =>
-
           prev.map((filing) =>
-
             filing.id === filingId
-
               ? {
                   ...filing,
                   payment_status:
                     paymentStatus,
                 }
-
               : filing
           )
         );
@@ -204,59 +221,80 @@ export function Filings() {
 
 
 
+  const filteredFilings = useMemo(() => {
 
-
-  const filteredFilings =
-  filings.filter((filing) => {
+  return filings.filter((filing) => {
 
     const search =
-    searchTerm.toLowerCase();
+    searchTerm
+      .toLowerCase()
+      .trim();
+
+    const memberName =
+      filing.member_name || "";
+
+    const customerName =
+      filing.customer_name || "";
+
+    const relationship =
+      filing.relationship || "";
+
+    const paymentStatus =
+      filing.payment_status || "";
 
     return (
 
-      filing.member_name
-        ?.toLowerCase()
+      memberName
+        .toLowerCase()
+        .includes(search) ||
+
+      customerName
+        .toLowerCase()
+        .includes(search) ||
+
+      relationship
+        .toLowerCase()
+        .includes(search) ||
+
+      paymentStatus
+        .toLowerCase()
         .includes(search)
 
-      ||
-
-      filing.customer_name
-        ?.toLowerCase()
-        .includes(search)
-
-      ||
-
-      filing.status
-        ?.toLowerCase()
-        .includes(search)
     );
   });
 
-
+}, [filings, searchTerm]);
 
 
 
   const handleExport = () => {
 
     const exportData =
-    filteredFilings.map((filing) => ({
+    filteredFilings.map(
+      (filing: any) => ({
 
-      Member:
-        filing.member_name,
+        Member:
+          filing.member_name ||
+          "No Member",
 
-      Customer:
-        filing.customer_name,
+        Customer:
+          filing.customer_name ||
+          "No Customer",
 
-      Year:
-        filing.assessment_year,
+        Relationship:
+          filing.relationship ||
+          "Self",
 
-      FilingStatus:
-        filing.status,
+        FilingStatus:
+          filing.status ||
+          "Pending",
 
-      PaymentStatus:
-        filing.payment_status ||
-        "Unpaid",
-    }));
+        PaymentStatus:
+          filing.payment_status ||
+          "Unpaid",
+
+      })
+    );
 
     exportToCSV(
       exportData,
@@ -266,13 +304,20 @@ export function Filings() {
 
 
 
+  if (loading) {
+
+    return (
+      <div className="p-10 text-center">
+        Loading filings...
+      </div>
+    );
+  }
+
 
 
   return (
 
     <div className="space-y-6">
-
-
 
 
 
@@ -293,19 +338,18 @@ export function Filings() {
 
 
 
-
-
         <Button
           className="rounded-xl bg-gradient-to-r from-primary to-primary-dark"
           onClick={handleExport}
         >
+
           <Download className="w-4 h-4 mr-2" />
+
           Export CSV
+
         </Button>
 
       </div>
-
-
 
 
 
@@ -335,20 +379,18 @@ export function Filings() {
 
 
 
-
-
       {/* TABLE */}
       <Card className="rounded-2xl border-0 shadow-sm">
 
         <CardHeader>
 
           <CardTitle>
-            All Filings ({filteredFilings.length})
+            All Filings (
+            {filteredFilings.length}
+            )
           </CardTitle>
 
         </CardHeader>
-
-
 
 
 
@@ -358,7 +400,7 @@ export function Filings() {
 
             <TableHeader>
 
-              <TableRow>
+              <TableRow className="hover:bg-transparent border-border">
 
                 <TableHead>
                   Member
@@ -366,14 +408,6 @@ export function Filings() {
 
                 <TableHead>
                   Customer
-                </TableHead>
-
-                <TableHead>
-                  Assessment Year
-                </TableHead>
-
-                <TableHead>
-                  Filing Status
                 </TableHead>
 
                 <TableHead>
@@ -390,150 +424,116 @@ export function Filings() {
 
 
 
-
-
             <TableBody>
 
-              {filteredFilings.map((filing) => (
+              {filteredFilings.map(
+                (filing: any) => (
 
-                <TableRow
-                  key={filing.id}
-                >
+                  <TableRow
+                    key={filing.id}
+                    className="border-border"
+                  >
 
-                  {/* MEMBER */}
-                  <TableCell>
 
-                    <div>
 
-                      <div className="font-semibold text-lg">
+                    {/* MEMBER */}
+                    <TableCell>
+
+                      <div>
+
+                        <div className="font-semibold text-lg">
+                          {
+                            filing.member_name ||
+                            "No Member"
+                          }
+                        </div>
+
+                        <div className="text-sm text-text-mid">
+                          {
+                            filing.relationship ||
+                            "Self"
+                          }
+                        </div>
+
+                      </div>
+
+                    </TableCell>
+
+
+
+                    {/* CUSTOMER */}
+                    <TableCell>
+
+                      <div className="font-medium">
                         {
-                          filing.member_name
+                          filing.customer_name ||
+                          "No Customer"
                         }
                       </div>
 
-                      <div className="text-sm text-text-mid">
-                        {
-                          filing.relationship ||
-                          "Self"
+                    </TableCell>
+
+
+
+                    {/* PAYMENT STATUS */}
+                    <TableCell>
+
+                      <select
+
+                        value={
+                          filing.payment_status ||
+                          "Unpaid"
                         }
-                      </div>
 
-                    </div>
+                        onChange={(e) =>
+                          updatePaymentStatus(
+                            filing.id,
+                            e.target.value
+                          )
+                        }
 
-                  </TableCell>
+                        className={`px-3 py-2 rounded-xl text-sm font-medium border outline-none ${getPaymentColor(
+                          filing.payment_status ||
+                          "Unpaid"
+                        )}`}
+                      >
 
+                        <option value="Unpaid">
+                          Unpaid
+                        </option>
 
+                        <option value="Paid">
+                          Paid
+                        </option>
 
+                      </select>
 
-
-                  {/* CUSTOMER */}
-                  <TableCell>
-
-                    <div className="font-medium">
-                      {
-                        filing.customer_name
-                      }
-                    </div>
-
-                  </TableCell>
-
-
-
-
-
-                  {/* YEAR */}
-                  <TableCell>
-
-                    {
-                      filing.assessment_year
-                    }
-
-                  </TableCell>
+                    </TableCell>
 
 
 
+                    {/* WORKSPACE */}
+                    <TableCell>
 
+                      <Link
+                        to={`/filings/${filing.id}`}
+                      >
 
-                  {/* FILING STATUS */}
-                  <TableCell>
+                        <Button className="rounded-xl">
 
-                    <Badge
-                      className={`rounded-lg border ${getStatusColor(
-                        filing.status
-                      )}`}
-                    >
-                      {filing.status}
-                    </Badge>
+                          Open
 
-                  </TableCell>
+                          <ExternalLink className="w-4 h-4 ml-2" />
 
+                        </Button>
 
+                      </Link>
 
+                    </TableCell>
 
-
-                  {/* PAYMENT STATUS */}
-                  <TableCell>
-
-                    <select
-
-                      value={
-                        filing.payment_status ||
-                        "Unpaid"
-                      }
-
-                      onChange={(e) =>
-
-                        updatePaymentStatus(
-
-                          filing.id,
-                          e.target.value
-                        )
-                      }
-
-                      className={`px-3 py-2 rounded-xl text-sm font-medium border outline-none ${getPaymentColor(
-                        filing.payment_status ||
-                        "Unpaid"
-                      )}`}
-                    >
-
-                      <option value="Unpaid">
-                        Unpaid
-                      </option>
-
-                      <option value="Paid">
-                        Paid
-                      </option>
-
-                    </select>
-
-                  </TableCell>
-
-
-
-
-
-                  {/* WORKSPACE */}
-                  <TableCell>
-
-                    <Link
-                      to={`/filings/${filing.id}`}
-                    >
-
-                      <Button className="rounded-xl">
-
-                        Open
-
-                        <ExternalLink className="w-4 h-4 ml-2" />
-
-                      </Button>
-
-                    </Link>
-
-                  </TableCell>
-
-                </TableRow>
-
-              ))}
+                  </TableRow>
+                )
+              )}
 
             </TableBody>
 

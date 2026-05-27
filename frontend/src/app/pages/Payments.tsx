@@ -1,5 +1,4 @@
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../../lib/firebase";
 
@@ -25,7 +24,6 @@ import {
 
 import {
   Search,
-  IndianRupee,
   CheckCircle,
   Clock,
 } from "lucide-react";
@@ -36,14 +34,12 @@ const getPaymentColor = (
 
   const colors: Record<string, string> = {
 
-    Pending:
-      "bg-amber-100 text-amber-700 border-amber-200",
-
-    Completed:
+    Paid:
       "bg-green-100 text-green-700 border-green-200",
 
-    Failed:
+    Unpaid:
       "bg-red-100 text-red-700 border-red-200",
+
   };
 
   return (
@@ -66,11 +62,13 @@ export function Payments() {
 
 
 
+
   useEffect(() => {
 
     fetchPayments();
 
   }, []);
+
 
 
 
@@ -81,10 +79,6 @@ export function Payments() {
 
       const token =
       await auth.currentUser?.getIdToken();
-
-
-
-
 
       const response =
       await fetch(
@@ -101,10 +95,6 @@ export function Payments() {
 
       const data =
       await response.json();
-
-
-
-
 
       if (data.success) {
 
@@ -124,37 +114,49 @@ export function Payments() {
 
 
 
+
   const filteredPayments =
-  payments.filter((payment) => {
+  useMemo(() => {
 
-    const search =
-    searchTerm.toLowerCase();
+    return payments.filter((payment) => {
 
-    return (
+      const search =
+      searchTerm
+        .toLowerCase()
+        .trim();
 
-      payment.customer_name
-        ?.toLowerCase()
-        .includes(search)
+      const customerName =
+        payment.customer_name || "";
 
-      ||
+      const memberName =
+        payment.member_name || "";
 
-      payment.member_name
-        ?.toLowerCase()
-        .includes(search)
+      const paymentStatus =
+        payment.payment_status || "";
 
-      ||
+      return (
 
-      payment.filing_type
-        ?.toLowerCase()
-        .includes(search)
+        customerName
+          .toLowerCase()
+          .includes(search)
 
-      ||
+        ||
 
-      payment.payment_status
-        ?.toLowerCase()
-        .includes(search)
-    );
-  });
+        memberName
+          .toLowerCase()
+          .includes(search)
+
+        ||
+
+        paymentStatus
+          .toLowerCase()
+          .includes(search)
+
+      );
+    });
+
+  }, [payments, searchTerm]);
+
 
 
 
@@ -172,6 +174,7 @@ export function Payments() {
 
 
 
+
   return (
 
     <div className="space-y-6">
@@ -184,7 +187,7 @@ export function Payments() {
         </h1>
 
         <p className="text-text-mid mt-1">
-          Track completed and pending filing payments
+          Track customer payment statuses
         </p>
 
       </div>
@@ -203,7 +206,7 @@ export function Payments() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
 
             <Input
-              placeholder="Search customer, member, filing type..."
+              placeholder="Search customer, member, payment..."
               value={searchTerm}
               onChange={(e) =>
                 setSearchTerm(e.target.value)
@@ -253,18 +256,6 @@ export function Payments() {
                 </TableHead>
 
                 <TableHead>
-                  Filing Type
-                </TableHead>
-
-                <TableHead>
-                  Assessment Year
-                </TableHead>
-
-                <TableHead>
-                  Amount
-                </TableHead>
-
-                <TableHead>
                   Status
                 </TableHead>
 
@@ -292,29 +283,12 @@ export function Payments() {
                   {/* MEMBER */}
                   <TableCell>
 
-                    <div>
+                    <div className="font-semibold text-text-dark">
 
-                      <div className="font-semibold text-text-dark">
-
-                        {
-                          payment.member_name
-                          || "Unknown Member"
-                        }
-
-                      </div>
-
-
-
-
-
-                      <div className="text-sm text-text-mid">
-
-                        {
-                          payment.relationship
-                          || "Self"
-                        }
-
-                      </div>
+                      {
+                        payment.member_name
+                        || "Unknown Member"
+                      }
 
                     </div>
 
@@ -331,56 +305,7 @@ export function Payments() {
 
                       {
                         payment.customer_name
-                      }
-
-                    </div>
-
-                  </TableCell>
-
-
-
-
-
-                  {/* FILING TYPE */}
-                  <TableCell>
-
-                    <Badge
-                      variant="outline"
-                      className="rounded-lg"
-                    >
-                      {
-                        payment.filing_type
-                      }
-                    </Badge>
-
-                  </TableCell>
-
-
-
-
-
-                  {/* YEAR */}
-                  <TableCell>
-
-                    {
-                      payment.assessment_year
-                    }
-
-                  </TableCell>
-
-
-
-
-
-                  {/* AMOUNT */}
-                  <TableCell>
-
-                    <div className="flex items-center gap-1 font-medium">
-
-                      <IndianRupee className="w-4 h-4" />
-
-                      {
-                        payment.amount || 0
+                        || "Unknown Customer"
                       }
 
                     </div>
@@ -403,7 +328,7 @@ export function Payments() {
                       <div className="flex items-center gap-1">
 
                         {
-                          payment.payment_status === "Completed"
+                          payment.payment_status === "Paid"
                           ? (
                             <CheckCircle className="w-3 h-3" />
                           ) : (
@@ -425,17 +350,20 @@ export function Payments() {
 
 
 
-                  {/* DATE */}
-                  <TableCell>
+                 {/* DATE */}
+<TableCell>
 
-                    {
-                      payment.payment_date
-                      ? new Date(payment.payment_date)
-                        .toLocaleDateString()
-                      : "N/A"
-                    }
+  {
+    payment.payment_status === "Paid"
 
-                  </TableCell>
+    ? new Date(
+        payment.updated_at
+      ).toLocaleDateString()
+
+    : "-"
+  }
+
+</TableCell>
 
                 </TableRow>
 

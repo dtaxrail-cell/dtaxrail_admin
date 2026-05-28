@@ -15,13 +15,17 @@ import {
   updateFilingStatus,
   uploadFilingResult,
 
+  getCustomerFilingsForApp,
+
 } from "../controllers/filingController.js";
 
 const router = express.Router();
 
 
 
+// ==========================================
 // ADMIN GET ALL FILINGS
+// ==========================================
 router.get(
   "/",
   authMiddleware,
@@ -31,19 +35,20 @@ router.get(
 
 
 
-// GET SINGLE FILING
+// ==========================================
+// CUSTOMER GET ALL FILINGS
+// ==========================================
 router.get(
-  "/:filingId",
-
+  "/customer/all",
   authMiddleware,
-  adminMiddleware,
-
-  getSingleFiling
+  getCustomerFilingsForApp
 );
 
 
 
+// ==========================================
 // CUSTOMER CREATE FILING
+// ==========================================
 router.post(
   "/create",
   authMiddleware,
@@ -52,7 +57,9 @@ router.post(
 
 
 
+// ==========================================
 // REQUEST ADDITIONAL DOCS
+// ==========================================
 router.post(
   "/request-documents/:filingId",
 
@@ -64,7 +71,9 @@ router.post(
 
 
 
+// ==========================================
 // UPDATE FILING STATUS
+// ==========================================
 router.put(
   "/status/:filingId",
 
@@ -76,7 +85,9 @@ router.put(
 
 
 
+// ==========================================
 // UPLOAD FINAL RESULT
+// ==========================================
 router.post(
   "/upload-result/:filingId",
 
@@ -86,6 +97,20 @@ router.post(
   upload.single("result"),
 
   uploadFilingResult
+);
+
+
+
+// ==========================================
+// GET SINGLE FILING
+// ==========================================
+router.get(
+  "/:filingId",
+
+  authMiddleware,
+  adminMiddleware,
+
+  getSingleFiling
 );
 
 export default router;

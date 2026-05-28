@@ -2,7 +2,9 @@ import { getPool } from "../config/db.js";
 
 
 
+// ==========================================
 // GET ALL PAYMENTS
+// ==========================================
 export const getPayments = async (req, res) => {
 
   try {
@@ -16,8 +18,12 @@ export const getPayments = async (req, res) => {
 
         customers.name AS customer_name,
 
-        filings.member_name,
-        filings.relationship,
+        members.full_name AS member_name,
+        members.relationship,
+        members.pan_number,
+        members.phone,
+        members.email,
+
         filings.assessment_year,
         filings.status AS filing_status
 
@@ -28,6 +34,9 @@ export const getPayments = async (req, res) => {
 
       LEFT JOIN filings
       ON payments.filing_id = filings.id
+
+      LEFT JOIN members
+      ON filings.member_id = members.id
 
       ORDER BY payments.created_at DESC
     `);
@@ -42,8 +51,7 @@ export const getPayments = async (req, res) => {
 
       count: result.rows.length,
 
-      payments:
-      result.rows,
+      payments: result.rows,
 
     });
 
@@ -64,7 +72,9 @@ export const getPayments = async (req, res) => {
 
 
 
+// ==========================================
 // UPDATE PAYMENT STATUS
+// ==========================================
 export const updatePaymentStatus =
 async (req, res) => {
 
@@ -139,7 +149,7 @@ async (req, res) => {
 
 
 
-    // UPDATE EXISTING
+    // UPDATE EXISTING PAYMENT
     if (
       existingPayment.rows.length > 0
     ) {
@@ -153,6 +163,7 @@ async (req, res) => {
         SET
 
           payment_status = $1,
+          payment_date = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
 
         WHERE filing_id = $2
@@ -168,7 +179,6 @@ async (req, res) => {
 
       payment =
       updateResult.rows[0];
-
     }
 
 
@@ -222,7 +232,7 @@ async (req, res) => {
       success: true,
 
       message:
-      "Payment status updated",
+      "Payment status updated successfully",
 
       payment,
 

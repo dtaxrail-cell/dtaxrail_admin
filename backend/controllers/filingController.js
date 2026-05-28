@@ -362,6 +362,7 @@ async (req, res) => {
 
     const { message } = req.body;
 
+    // SAVE MESSAGE
     await getPool().query(
 
       `
@@ -383,6 +384,18 @@ async (req, res) => {
       ]
     );
 
+    // UPDATE STATUS
+    await getPool().query(
+
+      `
+      UPDATE filings
+      SET status = 'Documents Requested'
+      WHERE id = $1
+      `,
+
+      [filingId]
+    );
+
     return res.json({
 
       success: true,
@@ -402,7 +415,6 @@ async (req, res) => {
     });
   }
 };
-
 
 
 export const updateFilingStatus =
@@ -556,6 +568,152 @@ async (req, res) => {
 
       success: true,
       message: "Result uploaded",
+
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    return res.status(500).json({
+
+      success: false,
+      error: error.message,
+
+    });
+  }
+};
+
+// ==========================================
+// CUSTOMER GET ALL FILINGS
+// ==========================================
+export const getCustomerFilingsForApp =
+async (req, res) => {
+
+  try {
+
+    const { email } = req.user;
+
+
+
+
+
+    // FIND CUSTOMER
+    const customerResult =
+    await getPool().query(
+
+      `
+      SELECT *
+      FROM customers
+      WHERE email = $1
+      `,
+
+      [email]
+    );
+
+
+
+
+
+    if (
+      customerResult.rows.length === 0
+    ) {
+
+      return res.status(404).json({
+
+        success: false,
+        message: "Customer not found",
+
+      });
+    }
+
+
+
+
+
+    const customer =
+    customerResult.rows[0];
+
+
+
+
+
+    // GET FILINGS
+    const result =
+    await getPool().query(
+
+      `
+      SELECT
+
+        filings.*,
+
+        members.full_name AS member_name,
+        members.relationship,
+        members.pan_number AS member_pan,
+
+        COUNT(DISTINCT documents.id)
+        AS document_count,
+
+        COUNT(DISTINCT filing_results.id)
+        AS result_count,
+
+        COALESCE(
+
+          (
+            SELECT payment_status
+            FROM payments
+            WHERE payments.filing_id = filings.id
+            ORDER BY created_at DESC
+            LIMIT 1
+          ),
+
+          'Pending'
+
+        ) AS payment_status,
+
+        (
+          SELECT message
+          FROM filing_messages
+          WHERE filing_messages.filing_id = filings.id
+          AND sender_type = 'admin'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) AS latest_admin_message
+
+      FROM filings
+
+      LEFT JOIN members
+      ON filings.member_id = members.id
+
+      LEFT JOIN documents
+      ON filings.id = documents.filing_id
+
+      LEFT JOIN filing_results
+      ON filings.id = filing_results.filing_id
+
+      WHERE filings.customer_id = $1
+
+      GROUP BY
+
+        filings.id,
+        members.id
+
+      ORDER BY filings.created_at DESC
+      `,
+
+      [customer.id]
+    );
+
+
+
+
+
+    return res.json({
+
+      success: true,
+
+      filings:
+      result.rows,
 
     });
 

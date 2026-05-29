@@ -16,6 +16,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import memberRoutes from "./routes/memberRoutes.js";
 import callbackRoutes from "./routes/callbackRoutes.js";
+import faqRoutes from "./routes/faqRoutes.js";
 
 const app = express();
 
@@ -30,6 +31,8 @@ app.use("/notifications", notificationRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/members", memberRoutes);
 app.use("/callbacks", callbackRoutes);
+app.use("/faqs", faqRoutes);
+
 
 app.get("/", async (req, res) => {
   try {

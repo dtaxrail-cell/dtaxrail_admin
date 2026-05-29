@@ -15,6 +15,7 @@ import documentRoutes from "./routes/documentRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import memberRoutes from "./routes/memberRoutes.js";
+import callbackRoutes from "./routes/callbackRoutes.js";
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use("/documents", documentRoutes);
 app.use("/notifications", notificationRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/members", memberRoutes);
+app.use("/callbacks", callbackRoutes);
 
 app.get("/", async (req, res) => {
   try {
@@ -116,7 +118,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-app.post(
+/*app.post(
   "/auth/sync-customer",
   authMiddleware,
   async (req, res) => {
@@ -190,4 +192,4 @@ app.post(
       });
     }
   }
-);
+);*/

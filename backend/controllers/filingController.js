@@ -729,3 +729,103 @@ async (req, res) => {
     });
   }
 };
+
+
+
+
+
+// ==========================================
+// CUSTOMER GET FILING RESULTS
+// ==========================================
+export const getCustomerFilingResults =
+async (req, res) => {
+
+  try {
+
+    const { email } = req.user;
+
+    // FIND CUSTOMER
+    const customerResult =
+    await getPool().query(
+
+      `
+      SELECT *
+      FROM customers
+      WHERE email = $1
+      `,
+
+      [email]
+    );
+
+    if (
+      customerResult.rows.length === 0
+    ) {
+
+      return res.status(404).json({
+
+        success: false,
+        message: "Customer not found",
+
+      });
+    }
+
+    const customer =
+    customerResult.rows[0];
+
+    // GET RESULTS
+    const result =
+    await getPool().query(
+
+      `
+      SELECT
+
+        filings.id,
+        filings.filing_type,
+        filings.assessment_year,
+        filings.status,
+
+        members.full_name AS member_name,
+
+        filing_results.id AS result_id,
+        filing_results.file_name,
+        filing_results.file_url,
+        filing_results.created_at
+
+      FROM filings
+
+      LEFT JOIN members
+      ON filings.member_id = members.id
+
+      LEFT JOIN filing_results
+      ON filings.id = filing_results.filing_id
+
+      WHERE filings.customer_id = $1
+      AND filing_results.id IS NOT NULL
+
+      ORDER BY filing_results.created_at DESC
+      `,
+
+      [customer.id]
+    );
+
+    return res.json({
+
+      success: true,
+
+      results:
+      result.rows,
+
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    return res.status(500).json({
+
+      success: false,
+      error: error.message,
+
+    });
+  }
+};

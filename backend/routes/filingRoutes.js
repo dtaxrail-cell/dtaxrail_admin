@@ -16,6 +16,7 @@ import {
   uploadFilingResult,
 
   getCustomerFilingsForApp,
+  getCustomerFilingResults,
 
 } from "../controllers/filingController.js";
 
@@ -42,6 +43,19 @@ router.get(
   "/customer/all",
   authMiddleware,
   getCustomerFilingsForApp
+);
+
+
+
+// ==========================================
+// CUSTOMER GET FILING RESULTS
+// ==========================================
+router.get(
+  "/customer/results",
+
+  authMiddleware,
+
+  getCustomerFilingResults
 );
 
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../../lib/firebase";
+import { API_BASE_URL } from "../../config/api";
 
 import {
   Card,
@@ -83,7 +84,7 @@ export function Payments() {
       const response =
       await fetch(
 
-        "http://localhost:5000/payments",
+        `${API_BASE_URL}/payments`,
 
         {
           headers: {

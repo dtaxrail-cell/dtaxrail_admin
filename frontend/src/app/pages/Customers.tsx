@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../../lib/firebase";
+import { API_BASE_URL } from "../../config/api";
 
 import {
   Card,
@@ -65,7 +66,7 @@ export function Customers() {
       await auth.currentUser?.getIdToken();
 
       const response = await fetch(
-        "http://localhost:5000/customers",
+        `${API_BASE_URL}/customers`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

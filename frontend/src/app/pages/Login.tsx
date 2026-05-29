@@ -8,6 +8,7 @@ import { Shield } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { auth } from "../../lib/firebase";
+import { API_BASE_URL } from "../../config/api";
 
 export function Login() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export function Login() {
     const token = await auth.currentUser?.getIdToken();
 
     // SEND TOKEN TO BACKEND
-    const response = await fetch("http://localhost:5000/auth/sync-user", {
+    const response = await fetch(`${API_BASE_URL}/auth/sync-user`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -45,7 +46,7 @@ export function Login() {
     console.log(data);
     
     const customersResponse = await fetch(
-  "http://localhost:5000/customers",
+  `${API_BASE_URL}/customers`,
   {
     headers: {
       Authorization: `Bearer ${token}`,

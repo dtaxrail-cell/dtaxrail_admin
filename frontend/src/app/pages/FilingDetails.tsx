@@ -7,6 +7,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
+import { API_BASE_URL } from "../../config/api";
 
 import {
   FileText,
@@ -60,7 +61,7 @@ export function FilingDetails() {
 
 
       const response = await fetch(
-        `http://localhost:5000/filings/${filingId}`,
+        `${API_BASE_URL}/filings/${filingId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -112,7 +113,7 @@ export function FilingDetails() {
 
 
       const response = await fetch(
-        `http://localhost:5000/filings/request-documents/${filingId}`,
+        `${API_BASE_URL}/filings/request-documents/${filingId}`,
         {
           method: "POST",
 
@@ -163,7 +164,7 @@ export function FilingDetails() {
 
 
       const response = await fetch(
-        `http://localhost:5000/filings/status/${filingId}`,
+        `${API_BASE_URL}/filings/status/${filingId}`,
         {
           method: "PUT",
 
@@ -224,7 +225,7 @@ export function FilingDetails() {
 
 
       const response = await fetch(
-        `http://localhost:5000/filings/upload-result/${filingId}`,
+        `${API_BASE_URL}/filings/upload-result/${filingId}`,
         {
           method: "POST",
 

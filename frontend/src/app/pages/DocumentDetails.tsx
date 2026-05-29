@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { API_BASE_URL } from "../../config/api";
 
 import {
   ArrowLeft,
@@ -49,7 +50,7 @@ export function DocumentDetails() {
 
 
         const response = await fetch(
-          `http://localhost:5000/documents/customer/${filingId}`,
+          `${API_BASE_URL}/documents/customer/${filingId}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,

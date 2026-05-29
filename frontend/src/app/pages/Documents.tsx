@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { API_BASE_URL } from "../../config/api";
 
 import {
   FolderOpen,
@@ -49,7 +50,7 @@ export function Documents() {
         const response =
         await fetch(
 
-          "http://localhost:5000/documents/folders",
+          `${API_BASE_URL}/documents/folders`,
 
           {
             headers: {

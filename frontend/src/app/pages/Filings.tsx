@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../../lib/firebase";
+import { API_BASE_URL } from "../../config/api";
 
 import {
   Card,
@@ -106,7 +107,7 @@ export function Filings() {
       await auth.currentUser?.getIdToken();
 
       const filingsResponse = await fetch(
-        "http://localhost:5000/filings",
+        `${API_BASE_URL}/filings`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -120,7 +121,7 @@ export function Filings() {
 
 
       const paymentsResponse = await fetch(
-        "http://localhost:5000/payments",
+        `${API_BASE_URL}/payments`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -180,7 +181,7 @@ export function Filings() {
       await auth.currentUser?.getIdToken();
 
       const response = await fetch(
-        `http://localhost:5000/payments/filing/${filingId}`,
+        `${API_BASE_URL}/payments/filing/${filingId}`,
         {
           method: "PUT",
 

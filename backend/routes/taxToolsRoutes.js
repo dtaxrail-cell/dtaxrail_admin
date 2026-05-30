@@ -7,23 +7,37 @@ import adminMiddleware
 from "../middleware/adminMiddleware.js";
 
 import {
-  getTaxTools,
-  updateTaxTools,
+  getCalculatorConfig,
+  updateCalculatorConfig,
+  getRegimeConfig,
+  updateRegimeConfig,
 }
 from "../controllers/taxToolsController.js";
 
 const router = express.Router();
 
 router.get(
-  "/",
-  getTaxTools
+  "/calculator",
+  getCalculatorConfig
 );
 
 router.put(
-  "/",
+  "/calculator",
   authMiddleware,
   adminMiddleware,
-  updateTaxTools
+  updateCalculatorConfig
+);
+
+router.get(
+  "/regime",
+  getRegimeConfig
+);
+
+router.put(
+  "/regime",
+  authMiddleware,
+  adminMiddleware,
+  updateRegimeConfig
 );
 
 export default router;

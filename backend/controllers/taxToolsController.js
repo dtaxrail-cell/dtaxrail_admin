@@ -1,13 +1,14 @@
 import { getPool } from "../config/db.js";
 
-export const getTaxTools = async (req, res) => {
+export const getCalculatorConfig = async (req, res) => {
   try {
 
     const result = await getPool().query(
       `
       SELECT *
       FROM tax_tools
-      WHERE is_active = true
+      WHERE category = 'calculator'
+      AND is_active = true
       LIMIT 1
       `
     );
@@ -28,7 +29,7 @@ export const getTaxTools = async (req, res) => {
   }
 };
 
-export const updateTaxTools = async (req, res) => {
+export const updateCalculatorConfig = async (req, res) => {
   try {
 
     const {
@@ -45,7 +46,79 @@ export const updateTaxTools = async (req, res) => {
         content = $2,
         metadata = $3,
         updated_at = CURRENT_TIMESTAMP
-      WHERE is_active = true
+      WHERE category = 'calculator'
+      RETURNING *
+      `,
+      [
+        title,
+        content,
+        metadata,
+      ]
+    );
+
+    res.json({
+      success: true,
+      taxTools: result.rows[0],
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+export const getRegimeConfig = async (req, res) => {
+  try {
+
+    const result = await getPool().query(
+      `
+      SELECT *
+      FROM tax_tools
+      WHERE category = 'regime'
+      AND is_active = true
+      LIMIT 1
+      `
+    );
+
+    res.json({
+      success: true,
+      taxTools: result.rows[0] || null,
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+export const updateRegimeConfig = async (req, res) => {
+  try {
+
+    const {
+      title,
+      content,
+      metadata,
+    } = req.body;
+
+    const result = await getPool().query(
+      `
+      UPDATE tax_tools
+      SET
+        title = $1,
+        content = $2,
+        metadata = $3,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE category = 'regime'
       RETURNING *
       `,
       [

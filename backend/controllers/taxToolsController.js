@@ -76,18 +76,6 @@ export const getYearConfig = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // CALCULATE TAX  (public)
 // POST /tax-tools/calculate
-//
-// Body:
-// {
-//   financialYear: "2026-27",
-//   filingPersona: "salaried" | "freelancer" | "business",
-//   ageCategory: "general" | "senior" | "super_senior",
-//   grossIncome: 1200000,
-//   exemptedAllowances: 50000,
-//   deductions: 150000,          // excl. std deduction & NPS
-//   npsContribution: 50000,
-//   tdsPaid: 80000
-// }
 // ─────────────────────────────────────────────────────────────────────────────
 export const calculateTax = async (req, res) => {
   try {
@@ -102,7 +90,6 @@ export const calculateTax = async (req, res) => {
       tdsPaid = 0,
     } = req.body;
 
-    // Load config for the year
     const result = await getPool().query(
       `SELECT metadata FROM tax_tools
        WHERE category = 'tax_calculator'
@@ -117,27 +104,21 @@ export const calculateTax = async (req, res) => {
 
     const cfg = result.rows[0].metadata;
     const newCfg = cfg.newRegime;
-    const oldCfgByAge = cfg.oldRegime[ageCategory]; // general | senior | super_senior
+    const oldCfgByAge = cfg.oldRegime[ageCategory];
 
     if (!newCfg || !oldCfgByAge) {
       return res.status(400).json({ success: false, error: "Invalid config or age category" });
     }
 
-    // ── New Regime ──────────────────────────────────────────────────────────
-    // Net taxable = gross - exempted allowances - standard deduction
-    // NPS not deductible under new regime (80CCD not allowed)
     const newNetIncome = Math.max(0, grossIncome - exemptedAllowances - newCfg.standardDeduction);
     const newTaxLiability = calcTax(newNetIncome, newCfg.slabs, newCfg.rebateLimit);
 
-    // ── Old Regime ──────────────────────────────────────────────────────────
-    // Net taxable = gross - exempted allowances - standard deduction - deductions - NPS
     const oldNetIncome = Math.max(
       0,
       grossIncome - exemptedAllowances - oldCfgByAge.standardDeduction - deductions - npsContribution
     );
     const oldTaxLiability = calcTax(oldNetIncome, oldCfgByAge.slabs, oldCfgByAge.rebateLimit);
 
-    // ── Savings ─────────────────────────────────────────────────────────────
     const savings =
       newTaxLiability < oldTaxLiability
         ? { amount: oldTaxLiability - newTaxLiability, regime: "new" }
@@ -145,8 +126,6 @@ export const calculateTax = async (req, res) => {
         ? { amount: newTaxLiability - oldTaxLiability, regime: "old" }
         : { amount: 0, regime: "equal" };
 
-    // ── Refund / Additional Tax ──────────────────────────────────────────────
-    // Use the lower of the two regimes for refund calc (better scenario)
     const bestTax = Math.min(newTaxLiability, oldTaxLiability);
     const netTaxPosition = bestTax - Number(tdsPaid);
     const refund =
@@ -156,7 +135,6 @@ export const calculateTax = async (req, res) => {
         ? { type: "payable", amount: netTaxPosition }
         : { type: "nil", amount: 0 };
 
-    // ── CTA message ─────────────────────────────────────────────────────────
     const personaMap = {
       salaried: cfg.personaMessages?.salaried,
       freelancer: cfg.personaMessages?.freelancer,
@@ -167,15 +145,8 @@ export const calculateTax = async (req, res) => {
     res.json({
       success: true,
       result: {
-        newRegime: {
-          netIncome: newNetIncome,
-          taxLiability: newTaxLiability,
-        },
-        oldRegime: {
-          netIncome: oldNetIncome,
-          taxLiability: oldTaxLiability,
-          ageCategory,
-        },
+        newRegime: { netIncome: newNetIncome, taxLiability: newTaxLiability },
+        oldRegime: { netIncome: oldNetIncome, taxLiability: oldTaxLiability, ageCategory },
         savings,
         refund,
         cta,
@@ -212,7 +183,7 @@ export const adminGetYearConfig = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADMIN: CREATE A NEW YEAR  (clones default or from existing year)
+// ADMIN: CREATE A NEW YEAR
 // POST /tax-tools/admin/years
 // Body: { financialYear: "2027-28", cloneFrom?: "2026-27" }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -224,7 +195,6 @@ export const adminCreateYear = async (req, res) => {
       return res.status(400).json({ success: false, error: "financialYear is required" });
     }
 
-    // Check duplicate
     const existing = await getPool().query(
       `SELECT id FROM tax_tools WHERE category = 'tax_calculator' AND metadata->>'financialYear' = $1`,
       [financialYear]
@@ -244,7 +214,6 @@ export const adminCreateYear = async (req, res) => {
       }
       metadata = { ...source.rows[0].metadata, financialYear };
     } else {
-      // Default scaffold
       metadata = defaultMetadataScaffold(financialYear);
     }
 
@@ -265,7 +234,6 @@ export const adminCreateYear = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN: SAVE FULL CONFIG FOR A YEAR
 // PUT /tax-tools/admin/:year
-// Body: full metadata object (same shape as scaffold below)
 // ─────────────────────────────────────────────────────────────────────────────
 export const adminSaveYearConfig = async (req, res) => {
   try {
@@ -276,7 +244,6 @@ export const adminSaveYearConfig = async (req, res) => {
       return res.status(400).json({ success: false, error: "metadata is required" });
     }
 
-    // Always enforce the financialYear key matches the URL param
     metadata.financialYear = year;
 
     const result = await getPool().query(
@@ -300,11 +267,45 @@ export const adminSaveYearConfig = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LEGACY ROUTES — kept so existing Flutter app & admin don't break immediately
-// GET /tax-tools/calculator   →  returns calculator category row (old format)
-// PUT /tax-tools/calculator
-// GET /tax-tools/regime
-// PUT /tax-tools/regime
+// ADMIN: DELETE A YEAR                          ← NEW
+// DELETE /tax-tools/admin/:year
+// ─────────────────────────────────────────────────────────────────────────────
+export const adminDeleteYear = async (req, res) => {
+  try {
+    const { year } = req.params;
+
+    // Safety: refuse if it's the only year left
+    const countResult = await getPool().query(
+      `SELECT COUNT(*) FROM tax_tools WHERE category = 'tax_calculator'`
+    );
+    if (Number(countResult.rows[0].count) <= 1) {
+      return res.status(400).json({
+        success: false,
+        error: "Cannot delete the only financial year. Create another year first.",
+      });
+    }
+
+    const result = await getPool().query(
+      `DELETE FROM tax_tools
+       WHERE category = 'tax_calculator'
+         AND metadata->>'financialYear' = $1
+       RETURNING id`,
+      [year]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "Year not found" });
+    }
+
+    res.json({ success: true, deleted: year });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGACY ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 export const getCalculatorConfig = async (req, res) => {
   try {
@@ -362,7 +363,6 @@ export const updateRegimeConfig = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFAULT METADATA SCAFFOLD
-// Shape stored in tax_tools.metadata for category = 'tax_calculator'
 // ─────────────────────────────────────────────────────────────────────────────
 function defaultMetadataScaffold(financialYear) {
   return {
@@ -386,10 +386,10 @@ function defaultMetadataScaffold(financialYear) {
         exemptionLimit: 250000,
         rebateLimit: 500000,
         slabs: [
-          { from: 0,      to: 250000,  rate: 0  },
-          { from: 250000, to: 500000,  rate: 5  },
-          { from: 500000, to: 1000000, rate: 20 },
-          { from: 1000000, to: null,   rate: 30 },
+          { from: 0,       to: 250000,  rate: 0  },
+          { from: 250000,  to: 500000,  rate: 5  },
+          { from: 500000,  to: 1000000, rate: 20 },
+          { from: 1000000, to: null,    rate: 30 },
         ],
       },
       senior: {
@@ -397,10 +397,10 @@ function defaultMetadataScaffold(financialYear) {
         exemptionLimit: 300000,
         rebateLimit: 500000,
         slabs: [
-          { from: 0,      to: 300000,  rate: 0  },
-          { from: 300000, to: 500000,  rate: 5  },
-          { from: 500000, to: 1000000, rate: 20 },
-          { from: 1000000, to: null,   rate: 30 },
+          { from: 0,       to: 300000,  rate: 0  },
+          { from: 300000,  to: 500000,  rate: 5  },
+          { from: 500000,  to: 1000000, rate: 20 },
+          { from: 1000000, to: null,    rate: 30 },
         ],
       },
       super_senior: {
@@ -408,9 +408,9 @@ function defaultMetadataScaffold(financialYear) {
         exemptionLimit: 500000,
         rebateLimit: 500000,
         slabs: [
-          { from: 0,      to: 500000,  rate: 0  },
-          { from: 500000, to: 1000000, rate: 20 },
-          { from: 1000000, to: null,   rate: 30 },
+          { from: 0,       to: 500000,  rate: 0  },
+          { from: 500000,  to: 1000000, rate: 20 },
+          { from: 1000000, to: null,    rate: 30 },
         ],
       },
     },

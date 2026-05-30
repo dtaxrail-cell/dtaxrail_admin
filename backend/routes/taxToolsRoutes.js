@@ -10,6 +10,7 @@ import {
   adminGetYearConfig,
   adminCreateYear,
   adminSaveYearConfig,
+  adminDeleteYear,                          // ← NEW
 
   // ── Legacy routes (keep until Flutter + admin panel fully migrated) ─────
   getCalculatorConfig,
@@ -37,12 +38,8 @@ router.post("/calculate", calculateTax);
 // ADMIN — protected
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.get(
-  "/admin/:year",
-  authMiddleware,
-  adminMiddleware,
-  adminGetYearConfig
-);
+// IMPORTANT: /admin/years must be registered BEFORE /admin/:year
+// otherwise Express will match "years" as the :year param.
 
 router.post(
   "/admin/years",
@@ -51,11 +48,25 @@ router.post(
   adminCreateYear
 );
 
+router.get(
+  "/admin/:year",
+  authMiddleware,
+  adminMiddleware,
+  adminGetYearConfig
+);
+
 router.put(
   "/admin/:year",
   authMiddleware,
   adminMiddleware,
   adminSaveYearConfig
+);
+
+router.delete(                              // ← NEW
+  "/admin/:year",
+  authMiddleware,
+  adminMiddleware,
+  adminDeleteYear
 );
 
 // ─────────────────────────────────────────────────────────────────────────────

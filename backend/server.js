@@ -17,6 +17,8 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import memberRoutes from "./routes/memberRoutes.js";
 import callbackRoutes from "./routes/callbackRoutes.js";
 import faqRoutes from "./routes/faqRoutes.js";
+import taxToolsRoutes
+from "./routes/taxToolsRoutes.js";
 
 const app = express();
 
@@ -32,6 +34,10 @@ app.use("/dashboard", dashboardRoutes);
 app.use("/members", memberRoutes);
 app.use("/callbacks", callbackRoutes);
 app.use("/faqs", faqRoutes);
+app.use(
+  "/tax-tools",
+  taxToolsRoutes
+);
 
 
 app.get("/", async (req, res) => {

@@ -13,7 +13,6 @@ import { DocumentDetails } from "./pages/DocumentDetails";
 
 import { Callbacks } from "./pages/Callbacks";
 import { Support } from "./pages/Support";
-import { Notifications } from "./pages/Notifications";
 import { TaxTools } from "./pages/TaxTools";
 
 import { MainLayout } from "./components/layout/MainLayout";
@@ -187,19 +186,6 @@ export default function App() {
 
 
 
-
-
-          {/* NOTIFICATIONS */}
-          <Route
-            path="/notifications"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Notifications />
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
 
 
 

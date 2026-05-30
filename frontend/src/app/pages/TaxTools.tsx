@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
-import { Save, Plus, Trash2, ChevronDown, Copy, RefreshCw } from "lucide-react";
+import { Save, Plus, Trash2, ChevronDown, Copy, RefreshCw, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -48,6 +48,58 @@ type OldRegimeAge = "general" | "senior" | "super_senior";
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 const inr = (v: number) => `₹${Number(v).toLocaleString("en-IN")}`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Delete Confirmation Modal
+// ─────────────────────────────────────────────────────────────────────────────
+function DeleteYearModal({
+  year,
+  onConfirm,
+  onCancel,
+  deleting,
+}: {
+  year: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-500" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-text-dark">Delete Financial Year</h2>
+            <p className="text-xs text-text-mid mt-0.5">This action cannot be undone.</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-text-mid">
+          Are you sure you want to permanently delete{" "}
+          <span className="font-semibold text-text-dark">{year}</span>? All tax slabs,
+          limits, and persona messages for this year will be removed.
+        </p>
+
+        <div className="flex gap-3 justify-end pt-1">
+          <Button variant="outline" size="sm" className="rounded-lg" onClick={onCancel} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="rounded-lg bg-red-500 hover:bg-red-600 text-white gap-2"
+            onClick={onConfirm}
+            disabled={deleting}
+          >
+            {deleting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {deleting ? "Deleting…" : "Delete year"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
@@ -167,6 +219,10 @@ export function TaxTools() {
   const [creating, setCreating] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Delete state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const loadYears = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API_BASE_URL}/tax-tools/years`);
@@ -229,6 +285,27 @@ export function TaxTools() {
     } finally { setCreating(false); }
   };
 
+  const deleteYear = async () => {
+    if (!selectedYear) return;
+    setDeleting(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      await axios.delete(
+        `${API_BASE_URL}/tax-tools/admin/${encodeURIComponent(selectedYear)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setShowDeleteModal(false);
+      setMetadata(null);
+      // Reload years and auto-select first available
+      const { data } = await axios.get(`${API_BASE_URL}/tax-tools/years`);
+      const list: { financial_year: string }[] = data.years ?? [];
+      setYears(list);
+      setSelectedYear(list.length ? list[0].financial_year : "");
+    } catch (e: any) {
+      alert(e?.response?.data?.error ?? "Failed to delete year");
+    } finally { setDeleting(false); }
+  };
+
   // Updaters
   const setNew = (c: RegimeConfig) => setMetadata(m => m ? { ...m, newRegime: c } : m);
   const setOld = (age: OldRegimeAge, c: RegimeConfig) =>
@@ -241,6 +318,16 @@ export function TaxTools() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 pb-10">
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <DeleteYearModal
+          year={selectedYear}
+          onConfirm={deleteYear}
+          onCancel={() => setShowDeleteModal(false)}
+          deleting={deleting}
+        />
+      )}
+
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -277,7 +364,26 @@ export function TaxTools() {
               onClick={() => setShowNewYear(v => !v)}>
               <Plus className="w-3.5 h-3.5" /> New year
             </Button>
+
+            {/* ── Delete year button ── */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl gap-1.5 text-xs text-red-500 border-red-200 hover:bg-red-50 hover:border-red-400"
+              disabled={!selectedYear || years.length <= 1}
+              onClick={() => setShowDeleteModal(true)}
+              title={years.length <= 1 ? "Cannot delete the only financial year" : `Delete ${selectedYear}`}
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete year
+            </Button>
           </div>
+
+          {/* Hint when only one year exists */}
+          {years.length <= 1 && selectedYear && (
+            <p className="mt-2 text-xs text-text-light">
+              You need at least one financial year — add another before deleting this one.
+            </p>
+          )}
 
           {showNewYear && (
             <div className="mt-5 p-4 rounded-xl border bg-surface space-y-4">

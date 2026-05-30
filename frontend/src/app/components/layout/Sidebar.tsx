@@ -7,7 +7,6 @@ import {
   FileCheck,
   Phone,
   MessageSquare,
-  Bell,
   Calculator,
   ChevronLeft,
   ChevronRight
@@ -22,7 +21,6 @@ const menuItems = [
   { icon: FileCheck, label: "Documents", path: "/documents" },
   { icon: Phone, label: "Callbacks", path: "/callbacks" },
   { icon: MessageSquare, label: "Support", path: "/support" },
-  { icon: Bell, label: "Notifications", path: "/notifications" },
   { icon: Calculator, label: "Tax Tools", path: "/tax-tools" },
 ];
 

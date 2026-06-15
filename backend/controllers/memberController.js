@@ -21,6 +21,7 @@ async (req, res) => {
       email,
       relationship,
       date_of_birth,
+      income_tax_password,
 
     } = req.body;
 
@@ -70,7 +71,7 @@ async (req, res) => {
 
         const customer = byEmail.rows[0];
         return await _insertMember(res, customer.id, {
-          full_name, pan_number, phone, email, relationship, date_of_birth,
+          full_name, pan_number, phone, email, relationship, date_of_birth, income_tax_password,
         });
       }
 
@@ -82,7 +83,7 @@ async (req, res) => {
 
     const customer = customerResult.rows[0];
     return await _insertMember(res, customer.id, {
-      full_name, pan_number, phone, email, relationship, date_of_birth,
+      full_name, pan_number, phone, email, relationship, date_of_birth, income_tax_password,
     });
 
   } catch (error) {
@@ -99,12 +100,13 @@ async (req, res) => {
 // ── Shared insert helper ──────────────────────────────────────────────────────
 async function _insertMember(res, customerId, fields) {
 
-  const { full_name, pan_number, phone, email, relationship, date_of_birth } = fields;
+  const { full_name, pan_number, phone, email, relationship, date_of_birth, income_tax_password } = fields;
 
-  const normName  = full_name     && full_name.trim()     !== "" ? full_name.trim()     : null;
-  const normPan   = pan_number    && pan_number.trim()    !== "" ? pan_number.trim()    : null;
-  const normEmail = email         && email.trim()         !== "" ? email.trim()         : null;
-  const normDob   = date_of_birth && date_of_birth.trim() !== "" ? date_of_birth.trim() : null;
+  const normName     = full_name            && full_name.trim()            !== "" ? full_name.trim()            : null;
+  const normPan      = pan_number           && pan_number.trim()           !== "" ? pan_number.trim()           : null;
+  const normEmail    = email                && email.trim()                !== "" ? email.trim()                : null;
+  const normDob      = date_of_birth        && date_of_birth.trim()        !== "" ? date_of_birth.trim()        : null;
+  const normPassword = income_tax_password  && income_tax_password.trim()  !== "" ? income_tax_password.trim()  : null;
 
   const result = await getPool().query(
     `
@@ -115,12 +117,13 @@ async function _insertMember(res, customerId, fields) {
       phone,
       email,
       relationship,
-      date_of_birth
+      date_of_birth,
+      income_tax_password
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *
     `,
-    [customerId, normName, normPan, phone.trim(), normEmail, relationship.trim(), normDob]
+    [customerId, normName, normPan, phone.trim(), normEmail, relationship.trim(), normDob, normPassword]
   );
 
   console.log("CREATE MEMBER — inserted:", result.rows[0]);
@@ -205,6 +208,7 @@ async (req, res) => {
       email,
       relationship,
       date_of_birth,
+      income_tax_password,
     } = req.body;
 
     if (!phone || phone.trim() === "") {
@@ -214,25 +218,27 @@ async (req, res) => {
       return res.status(400).json({ success: false, message: "Relationship is required" });
     }
 
-    const normName  = full_name     && full_name.trim()     !== "" ? full_name.trim()     : null;
-    const normPan   = pan_number    && pan_number.trim()    !== "" ? pan_number.trim()    : null;
-    const normEmail = email         && email.trim()         !== "" ? email.trim()         : null;
-    const normDob   = date_of_birth && date_of_birth.trim() !== "" ? date_of_birth.trim() : null;
+    const normName     = full_name            && full_name.trim()            !== "" ? full_name.trim()            : null;
+    const normPan      = pan_number           && pan_number.trim()           !== "" ? pan_number.trim()           : null;
+    const normEmail    = email                && email.trim()                !== "" ? email.trim()                : null;
+    const normDob      = date_of_birth        && date_of_birth.trim()        !== "" ? date_of_birth.trim()        : null;
+    const normPassword = income_tax_password  && income_tax_password.trim()  !== "" ? income_tax_password.trim()  : null;
 
     const result = await getPool().query(
       `
       UPDATE members
       SET
-        full_name     = $1,
-        pan_number    = $2,
-        phone         = $3,
-        email         = $4,
-        relationship  = $5,
-        date_of_birth = $6
-      WHERE id = $7
+        full_name            = $1,
+        pan_number           = $2,
+        phone                = $3,
+        email                = $4,
+        relationship         = $5,
+        date_of_birth        = $6,
+        income_tax_password  = $7
+      WHERE id = $8
       RETURNING *
       `,
-      [normName, normPan, phone.trim(), normEmail, relationship.trim(), normDob, memberId]
+      [normName, normPan, phone.trim(), normEmail, relationship.trim(), normDob, normPassword, memberId]
     );
 
     return res.json({ success: true, member: result.rows[0] });

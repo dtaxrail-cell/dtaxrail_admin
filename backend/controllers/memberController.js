@@ -23,7 +23,19 @@ async (req, res) => {
 
     const { uid } = req.user;
 
-
+    // ── Validate mandatory fields ─────────────────────────────────────────
+    if (!phone || phone.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+    if (!relationship || relationship.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Relationship is required",
+      });
+    }
 
     const customerResult =
     await getPool().query(
@@ -52,7 +64,11 @@ async (req, res) => {
     const customer =
     customerResult.rows[0];
 
-
+    // ── Normalise optional fields: empty string → null ────────────────────
+    const normName  = full_name     && full_name.trim()     !== "" ? full_name.trim()     : null;
+    const normPan   = pan_number    && pan_number.trim()    !== "" ? pan_number.trim()    : null;
+    const normEmail = email         && email.trim()         !== "" ? email.trim()         : null;
+    const normDob   = date_of_birth && date_of_birth.trim() !== "" ? date_of_birth.trim() : null;
 
     const result =
     await getPool().query(
@@ -81,12 +97,12 @@ async (req, res) => {
 
         customer.id,
 
-        full_name,
-        pan_number,
-        phone,
-        email,
-        relationship,
-        date_of_birth,
+        normName,
+        normPan,
+        phone.trim(),
+        normEmail,
+        relationship.trim(),
+        normDob,
 
       ]
     );
@@ -208,6 +224,26 @@ async (req, res) => {
 
     } = req.body;
 
+    // ── Validate mandatory fields ─────────────────────────────────────────
+    if (!phone || phone.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+    if (!relationship || relationship.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Relationship is required",
+      });
+    }
+
+    // ── Normalise optional fields: empty string → null ────────────────────
+    const normName  = full_name     && full_name.trim()     !== "" ? full_name.trim()     : null;
+    const normPan   = pan_number    && pan_number.trim()    !== "" ? pan_number.trim()    : null;
+    const normEmail = email         && email.trim()         !== "" ? email.trim()         : null;
+    const normDob   = date_of_birth && date_of_birth.trim() !== "" ? date_of_birth.trim() : null;
+
     const result =
     await getPool().query(
 
@@ -230,12 +266,12 @@ async (req, res) => {
 
       [
 
-        full_name,
-        pan_number,
-        phone,
-        email,
-        relationship,
-        date_of_birth,
+        normName,
+        normPan,
+        phone.trim(),
+        normEmail,
+        relationship.trim(),
+        normDob,
 
         memberId,
 

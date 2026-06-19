@@ -65,13 +65,14 @@ export const updateFilingStatus = async (req, res) => {
       [filingId]
     );
 
-    const oldStatus = oldResult.rows[0]?.status;
+    const oldStatus = oldResult.rows[0]?.status || '';
 
     await getPool().query(
       `UPDATE filings SET status = $1 WHERE id = $2`,
       [status, filingId]
     );
 
+    // Dynamic logging fallback safely captures whatever is written
     await getPool().query(
       `INSERT INTO filing_status_history (filing_id, old_status, new_status)
        VALUES ($1, $2, $3)`,
@@ -219,14 +220,13 @@ export const createFiling = async (req, res) => {
     const { filing_type, assessment_year, notes, member_id } = req.body;
     const { email } = req.user;
 
-    // 1. Sanitize the year format gracefully to match your exact DB requirements (YYYY-YYYY)
     let formattedYear = assessment_year;
     if (assessment_year && assessment_year.match(/^\d{4}-\d{2}$/)) {
       const parts = assessment_year.split('-');
       const startYear = parts[0];
       const endYearShort = parts[1];
       const century = startYear.substring(0, 2);
-      formattedYear = `${startYear}-${century}${endYearShort}`; // Converts 2025-26 to 2025-2026
+      formattedYear = `${startYear}-${century}${endYearShort}`;
     }
 
     const customerResult = await getPool().query(
@@ -249,7 +249,6 @@ export const createFiling = async (req, res) => {
       return res.status(404).json({ success: false, message: "Member not found" });
     }
 
-    // 2. Execute SQL query with safe stringified initial JSONB matching the structure
     const filingResult = await getPool().query(
       `INSERT INTO filings
          (customer_id, member_id, filing_type, assessment_year, notes, status, progress, payment_status, custom_fields)
@@ -472,4 +471,3 @@ export const getCustomerFilingResults = async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
-

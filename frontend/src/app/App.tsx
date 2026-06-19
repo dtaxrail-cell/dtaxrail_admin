@@ -1,82 +1,45 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 
-import { Login } from "./pages/Login";
+import { Login }              from "./pages/Login";
+import { FilingsSpreadsheet } from "./pages/FilingsSpreadsheet";
+import { FilingDetails }      from "./pages/FilingDetails";
+import { Customers }          from "./pages/Customers";
+import { Documents }          from "./pages/Documents";
+import { DocumentDetails }    from "./pages/DocumentDetails";
+import { Callbacks }          from "./pages/Callbacks";
+import { Support }            from "./pages/Support";
+import { TaxTools }           from "./pages/TaxTools";
 
-import { Filings } from "./pages/Filings";
-import { FilingDetails } from "./pages/FilingDetails";
-
-import { Customers } from "./pages/Customers";
-import { Payments } from "./pages/Payments";
-
-import { Documents } from "./pages/Documents";
-import { DocumentDetails } from "./pages/DocumentDetails";
-
-import { Callbacks } from "./pages/Callbacks";
-import { Support } from "./pages/Support";
-import { TaxTools } from "./pages/TaxTools";
-
-import { MainLayout } from "./components/layout/MainLayout";
-
-import { AuthProvider } from "./contexts/AuthContext";
+import { MainLayout }    from "./components/layout/MainLayout";
+import { AuthProvider }  from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-
-import { Toaster } from "./components/ui/sonner";
-
-
-
-
+import { Toaster }       from "./components/ui/sonner";
 
 export default function App() {
-
   return (
-
     <AuthProvider>
-
       <BrowserRouter>
-
         <Routes>
 
-
-
-
-
           {/* LOGIN */}
-          <Route
-            path="/login"
-            element={<Login />}
-          />
+          <Route path="/login" element={<Login />} />
 
+          {/* REDIRECT ROOT → FILINGS */}
+          <Route path="/" element={<Navigate to="/filings" replace />} />
 
-
-
-
-          {/* REDIRECT ROOT */}
-          <Route
-  path="/"
-  element={<Navigate to="/filings" replace />}
-/>
-
-
-
-
-
-          {/* FILINGS */}
+          {/* FILINGS SPREADSHEET (replaces old Filings + Payments) */}
           <Route
             path="/filings"
             element={
               <ProtectedRoute>
                 <MainLayout>
-                  <Filings />
+                  <FilingsSpreadsheet />
                 </MainLayout>
               </ProtectedRoute>
             }
           />
 
-
-
-
-
-          {/* FILING DETAILS */}
+          {/* FILING WORKSPACE */}
           <Route
             path="/filings/:filingId"
             element={
@@ -87,10 +50,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
-
-
-
 
           {/* CUSTOMERS */}
           <Route
@@ -104,26 +63,6 @@ export default function App() {
             }
           />
 
-
-
-
-
-          {/* PAYMENTS */}
-          <Route
-            path="/payments"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Payments />
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
-
-
-
-
-
           {/* DOCUMENTS */}
           <Route
             path="/documents"
@@ -135,10 +74,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
-
-
-
 
           {/* DOCUMENT DETAILS */}
           <Route
@@ -152,10 +87,6 @@ export default function App() {
             }
           />
 
-
-
-
-
           {/* CALLBACKS */}
           <Route
             path="/callbacks"
@@ -168,10 +99,6 @@ export default function App() {
             }
           />
 
-
-
-
-
           {/* SUPPORT */}
           <Route
             path="/support"
@@ -183,13 +110,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
-
-
-
-
-
-
 
           {/* TAX TOOLS */}
           <Route
@@ -205,14 +125,8 @@ export default function App() {
 
         </Routes>
 
-
-
-
-
         <Toaster />
-
       </BrowserRouter>
-
     </AuthProvider>
   );
 }

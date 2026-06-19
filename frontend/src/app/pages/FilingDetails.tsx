@@ -29,7 +29,6 @@ export function FilingDetails() {
 
   const [messages, setMessages] = useState<any[]>([]);
 
-  // Keep state initialization to prevent breaking external component bindings
   const [results, setResults] = useState<any[]>([]);
 
   const [requestMessage, setRequestMessage] = useState("");
@@ -202,13 +201,18 @@ export function FilingDetails() {
 
 
 
-  const deleteDocument = async (docId: string) => {
+  const deleteDocument = async (targetId: string) => {
+
+    if (!targetId) {
+      alert("Error: Missing document identifier key.");
+      return;
+    }
 
     if (!window.confirm("Are you sure you want to permanently delete this document?")) return;
 
     try {
 
-      setDeletingId(docId);
+      setDeletingId(targetId);
 
       const auth = getAuth();
       const user = auth.currentUser;
@@ -220,7 +224,7 @@ export function FilingDetails() {
 
 
       const response = await fetch(
-        `${API_BASE_URL}/documents/${docId}`,
+        `${API_BASE_URL}/documents/${targetId}`,
         {
           method: "DELETE",
           headers: {
@@ -233,7 +237,8 @@ export function FilingDetails() {
 
       if (data.success) {
 
-        setDocuments((prev) => prev.filter((d) => d.id !== docId));
+        // ✅ Robust filter handling both schema types
+        setDocuments((prev) => prev.filter((d) => d.id !== targetId && d.document_id !== targetId));
 
         alert("Document deleted successfully");
 
@@ -429,58 +434,61 @@ export function FilingDetails() {
                 No files uploaded yet by this user.
               </p>
             ) : (
-              documents.map((doc) => (
+              documents.map((doc) => {
+                // ✅ Resolve potential id variance dynamically
+                const resolvedId = doc.id || doc.document_id;
 
-                <div
-                  key={doc.id}
-                  className="border rounded-2xl p-5 flex items-center justify-between gap-4"
-                >
+                return (
+                  <div
+                    key={resolvedId}
+                    className="border rounded-2xl p-5 flex items-center justify-between gap-4"
+                  >
 
-                  <div>
+                    <div>
 
-                    <h4 className="text-lg font-semibold text-text-dark">
-                      {doc.document_name}
-                    </h4>
+                      <h4 className="text-lg font-semibold text-text-dark">
+                        {doc.document_name}
+                      </h4>
 
-                    <p className="text-sm text-text-mid mt-1">
-                      {doc.mime_type}
-                    </p>
+                      <p className="text-sm text-text-mid mt-1">
+                        {doc.mime_type}
+                      </p>
 
-                  </div>
+                    </div>
 
 
 
-                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
 
-                    <a
-                      href={doc.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Button variant="outline">
-                        <Download className="w-4 h-4 mr-2" />
-                        Download
+                      <a
+                        href={doc.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Button variant="outline">
+                          <Download className="w-4 h-4 mr-2" />
+                          Download
+                        </Button>
+                      </a>
+
+                      <Button
+                        variant="ghost"
+                        onClick={() => deleteDocument(resolvedId)}
+                        disabled={deletingId === resolvedId}
+                        className="text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl p-2"
+                      >
+                        {deletingId === resolvedId ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
                       </Button>
-                    </a>
 
-                    <Button
-                      variant="ghost"
-                      onClick={() => deleteDocument(doc.id)}
-                      disabled={deletingId === doc.id}
-                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl p-2"
-                    >
-                      {deletingId === doc.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-red-600" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </Button>
+                    </div>
 
                   </div>
-
-                </div>
-
-              ))
+                );
+              })
             )}
 
           </div>

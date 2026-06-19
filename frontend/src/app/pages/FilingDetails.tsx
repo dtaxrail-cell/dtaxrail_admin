@@ -12,8 +12,9 @@ import { API_BASE_URL } from "../../config/api";
 import {
   FileText,
   Download,
-  Upload,
   Bell,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 
 export function FilingDetails() {
@@ -28,13 +29,12 @@ export function FilingDetails() {
 
   const [messages, setMessages] = useState<any[]>([]);
 
-  const [results, setResults] = useState<any[]>([]);
+  const [requestMessage, setRequestMessage] = useState("");
 
-  const [requestMessage, setRequestMessage] =
-  useState("");
+  const [status, setStatus] = useState("Pending");
 
-  const [status, setStatus] =
-  useState("Pending");
+  // Track deletion loads across independent items
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
 
 
@@ -80,8 +80,6 @@ export function FilingDetails() {
         setDocuments(data.documents || []);
 
         setMessages(data.messages || []);
-
-        setResults(data.results || []);
 
         setStatus(data.filing.status);
       }
@@ -197,17 +195,15 @@ export function FilingDetails() {
 
 
 
-  const uploadResult = async (
-    e: any
-  ) => {
+  // ─── ✅ NEW: DELETE DOCUMENT HANDLER ───────────────────────────────────────
+
+  const deleteDocument = async (docId: string) => {
+
+    if (!window.confirm("Are you sure you want to permanently delete this document?")) return;
 
     try {
 
-      const file = e.target.files[0];
-
-      if (!file) return;
-
-
+      setDeletingId(docId);
 
       const auth = getAuth();
       const user = auth.currentUser;
@@ -218,22 +214,13 @@ export function FilingDetails() {
 
 
 
-      const formData = new FormData();
-
-      formData.append("result", file);
-
-
-
       const response = await fetch(
-        `${API_BASE_URL}/filings/upload-result/${filingId}`,
+        `${API_BASE_URL}/documents/${docId}`,
         {
-          method: "POST",
-
+          method: "DELETE",
           headers: {
             Authorization: `Bearer ${token}`,
           },
-
-          body: formData,
         }
       );
 
@@ -241,14 +228,25 @@ export function FilingDetails() {
 
       if (data.success) {
 
-        alert("Result uploaded");
+        // Instantly wipe from client view state grid array
+        setDocuments((prev) => prev.filter((d) => d.id !== docId));
 
-        fetchFilingDetails();
+        alert("Document deleted successfully");
+
+      } else {
+
+        alert(data.message || "Failed to delete document from server");
       }
 
     } catch (error) {
 
       console.log(error);
+
+      alert("An error occurred while deleting the document");
+
+    } finally {
+
+      setDeletingId(null);
     }
   };
 
@@ -298,6 +296,7 @@ export function FilingDetails() {
 
 
 
+      {/* CUSTOMER SUMMARY DETAIL HEADER CARD */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">
@@ -402,6 +401,7 @@ export function FilingDetails() {
 
 
 
+      {/* UPLOADED DOCUMENTS MANAGEMENT GRID */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">
@@ -420,40 +420,65 @@ export function FilingDetails() {
 
           <div className="space-y-4">
 
-            {documents.map((doc) => (
+            {documents.length === 0 ? (
+              <p className="text-sm text-text-light italic text-center py-4">
+                No files uploaded yet by this user.
+              </p>
+            ) : (
+              documents.map((doc) => (
 
-              <div
-                key={doc.id}
-                className="border rounded-2xl p-5 flex items-center justify-between"
-              >
+                <div
+                  key={doc.id}
+                  className="border rounded-2xl p-5 flex items-center justify-between gap-4"
+                >
 
-                <div>
+                  <div>
 
-                  <h4 className="text-lg font-semibold">
-                    {doc.document_name}
-                  </h4>
+                    <h4 className="text-lg font-semibold text-text-dark">
+                      {doc.document_name}
+                    </h4>
 
-                  <p className="text-sm text-text-mid mt-1">
-                    {doc.mime_type}
-                  </p>
+                    <p className="text-sm text-text-mid mt-1">
+                      {doc.mime_type}
+                    </p>
+
+                  </div>
+
+
+
+                  <div className="flex items-center gap-2">
+
+                    <a
+                      href={doc.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Button variant="outline">
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                      </Button>
+                    </a>
+
+                    {/* ✅ NEW: TRASH DELETION ACTION BUTTON */}
+                    <Button
+                      variant="ghost"
+                      onClick={() => deleteDocument(doc.id)}
+                      disabled={deletingId === doc.id}
+                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl"
+                    >
+                      {deletingId === doc.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
+
+                  </div>
 
                 </div>
 
-
-
-                <a
-                  href={doc.file_url}
-                  target="_blank"
-                >
-                  <Button variant="outline">
-                    <Download className="w-4 h-4 mr-2" />
-                    Download
-                  </Button>
-                </a>
-
-              </div>
-
-            ))}
+              ))
+            )}
 
           </div>
 
@@ -464,6 +489,7 @@ export function FilingDetails() {
 
 
 
+      {/* REQUEST ADDITIONAL DOCUMENTS COMPONENT BLOCK */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">
@@ -505,85 +531,12 @@ export function FilingDetails() {
 
 
 
-      <Card className="rounded-3xl border-0 shadow-sm">
-
-        <CardContent className="p-8">
-
-          <div className="flex items-center justify-between mb-6">
-
-            <h3 className="text-2xl font-bold text-text-dark">
-              Filing Results
-            </h3>
-
-
-
-            <label>
-
-              <input
-                type="file"
-                className="hidden"
-                onChange={uploadResult}
-              />
-
-              <Button asChild>
-                <span>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload Result
-                </span>
-              </Button>
-
-            </label>
-
-          </div>
-
-
-
-          <div className="space-y-4">
-
-            {results.map((result) => (
-
-              <div
-                key={result.id}
-                className="border rounded-2xl p-5 flex items-center justify-between"
-              >
-
-                <div>
-
-                  <h4 className="text-lg font-semibold">
-                    {result.file_name}
-                  </h4>
-
-                  <p className="text-sm text-text-mid mt-1">
-                    Final Filing Result
-                  </p>
-
-                </div>
-
-
-
-                <a
-                  href={result.file_url}
-                  target="_blank"
-                >
-                  <Button variant="outline">
-                    <Download className="w-4 h-4 mr-2" />
-                    Download
-                  </Button>
-                </a>
-
-              </div>
-
-            ))}
-
-          </div>
-
-        </CardContent>
-
-      </Card>
+      {/* 💡 Note: The "Filing Results" card block has been safely removed here */}
 
 
 
 
+      {/* WORKFLOW MESSAGES TIMELINE CHAT */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">

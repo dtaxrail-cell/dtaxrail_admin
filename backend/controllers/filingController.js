@@ -219,6 +219,16 @@ export const createFiling = async (req, res) => {
     const { filing_type, assessment_year, notes, member_id } = req.body;
     const { email } = req.user;
 
+    // 1. Sanitize the year format gracefully to match your exact DB requirements (YYYY-YYYY)
+    let formattedYear = assessment_year;
+    if (assessment_year && assessment_year.match(/^\d{4}-\d{2}$/)) {
+      const parts = assessment_year.split('-');
+      const startYear = parts[0];
+      const endYearShort = parts[1];
+      const century = startYear.substring(0, 2);
+      formattedYear = `${startYear}-${century}${endYearShort}`; // Converts 2025-26 to 2025-2026
+    }
+
     const customerResult = await getPool().query(
       `SELECT * FROM customers WHERE email = $1`,
       [email]
@@ -239,13 +249,13 @@ export const createFiling = async (req, res) => {
       return res.status(404).json({ success: false, message: "Member not found" });
     }
 
-    // ✅ FIXED: Replaced raw object literal {} with stringified context '{}' for Postgres JSONB processing
+    // 2. Execute SQL query with safe stringified initial JSONB matching the structure
     const filingResult = await getPool().query(
       `INSERT INTO filings
          (customer_id, member_id, filing_type, assessment_year, notes, status, progress, payment_status, custom_fields)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
        RETURNING *`,
-      [customer.id, member_id, filing_type, assessment_year, notes || null, "Pending", 0, "Unpaid", '{}']
+      [customer.id, member_id, filing_type, formattedYear, notes || null, "Pending", 0, "Unpaid", '{}']
     );
 
     return res.status(201).json({ success: true, filing: filingResult.rows[0] });
@@ -462,3 +472,4 @@ export const getCustomerFilingResults = async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
+

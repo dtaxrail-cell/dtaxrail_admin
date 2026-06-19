@@ -224,7 +224,7 @@ export function FilingDetails() {
 
 
       const response = await fetch(
-        `${API_BASE_URL}/documents/${targetId}`,
+        `${API_BASE_URL}/filings/delete-document/${targetId}`,
         {
           method: "DELETE",
           headers: {

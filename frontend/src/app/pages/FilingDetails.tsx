@@ -33,7 +33,7 @@ export function FilingDetails() {
 
   const [status, setStatus] = useState("Pending");
 
-  // Track deletion loads across independent items
+  // Track deletion loads across independent items safely
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
 
@@ -195,8 +195,6 @@ export function FilingDetails() {
 
 
 
-  // ─── ✅ NEW: DELETE DOCUMENT HANDLER ───────────────────────────────────────
-
   const deleteDocument = async (docId: string) => {
 
     if (!window.confirm("Are you sure you want to permanently delete this document?")) return;
@@ -228,7 +226,6 @@ export function FilingDetails() {
 
       if (data.success) {
 
-        // Instantly wipe from client view state grid array
         setDocuments((prev) => prev.filter((d) => d.id !== docId));
 
         alert("Document deleted successfully");
@@ -256,7 +253,7 @@ export function FilingDetails() {
   if (loading) {
 
     return (
-      <div className="p-10 text-center">
+      <div className="p-10 text-center text-sm text-text-mid">
         Loading filing details...
       </div>
     );
@@ -268,8 +265,8 @@ export function FilingDetails() {
   if (!filing) {
 
     return (
-      <div className="p-10 text-center">
-        Filing not found
+      <div className="p-10 text-center text-sm text-text-mid">
+        Filing workspace record entry not found.
       </div>
     );
   }
@@ -296,7 +293,7 @@ export function FilingDetails() {
 
 
 
-      {/* CUSTOMER SUMMARY DETAIL HEADER CARD */}
+      {/* CARD 1: MEMBER INFO */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">
@@ -401,7 +398,7 @@ export function FilingDetails() {
 
 
 
-      {/* UPLOADED DOCUMENTS MANAGEMENT GRID */}
+      {/* CARD 2: UPLOADED DOCUMENTS (WITH INDIVIDUAL DELETE OPTION) */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">
@@ -459,12 +456,11 @@ export function FilingDetails() {
                       </Button>
                     </a>
 
-                    {/* ✅ NEW: TRASH DELETION ACTION BUTTON */}
                     <Button
                       variant="ghost"
                       onClick={() => deleteDocument(doc.id)}
                       disabled={deletingId === doc.id}
-                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl"
+                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl p-2"
                     >
                       {deletingId === doc.id ? (
                         <Loader2 className="w-4 h-4 animate-spin text-red-600" />
@@ -489,7 +485,7 @@ export function FilingDetails() {
 
 
 
-      {/* REQUEST ADDITIONAL DOCUMENTS COMPONENT BLOCK */}
+      {/* CARD 3: REQUEST ADDITIONAL DOCUMENTS */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">
@@ -531,12 +527,7 @@ export function FilingDetails() {
 
 
 
-      {/* 💡 Note: The "Filing Results" card block has been safely removed here */}
-
-
-
-
-      {/* WORKFLOW MESSAGES TIMELINE CHAT */}
+      {/* CARD 4: WORKFLOW MESSAGES */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">

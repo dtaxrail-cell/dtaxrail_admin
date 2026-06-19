@@ -152,10 +152,22 @@ router.post(
 
 
 // ==========================================
+// ADMIN — UPLOAD FINAL RESULT
+// ==========================================
+router.post(
+  "/upload-result/:filingId",
+  authMiddleware,
+  adminMiddleware,
+  upload.single("result"),
+  uploadFilingResult
+);
+
+
+// ==========================================
 // ADMIN — DELETE INDIVIDUAL DOCUMENT
 // ==========================================
 router.delete(
-  "/documents/:documentId",
+  "/delete-document/:documentId", // 💡 Note the explicitly clean subpath to avoid catch-all clashes
   authMiddleware,
   adminMiddleware,
   async (req, res) => {
@@ -185,21 +197,6 @@ router.delete(
     }
   }
 );
-
-
-
-// ==========================================
-// ADMIN — UPLOAD FINAL RESULT
-// ==========================================
-router.post(
-  "/upload-result/:filingId",
-  authMiddleware,
-  adminMiddleware,
-  upload.single("result"),
-  uploadFilingResult
-);
-
-
 
 // ==========================================
 // ADMIN — GET SINGLE FILING WORKSPACE

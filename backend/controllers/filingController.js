@@ -69,14 +69,13 @@ export const updateFilingStatus = async (req, res) => {
 
     await getPool().query(
       `UPDATE filings SET status = $1 WHERE id = $2`,
-      [status, filingId]
+      [String(status), filingId]
     );
 
-    // Dynamic logging fallback safely captures whatever is written
     await getPool().query(
       `INSERT INTO filing_status_history (filing_id, old_status, new_status)
        VALUES ($1, $2, $3)`,
-      [filingId, oldStatus, status]
+      [filingId, oldStatus, String(status)]
     );
 
     return res.json({ success: true, message: "Status updated" });
@@ -94,9 +93,10 @@ export const updatePaymentStatusInline = async (req, res) => {
     const { filingId }     = req.params;
     const { payment_status } = req.body;
 
+    // ✅ Explicit typecast to prevent query parsing driver warnings
     await getPool().query(
       `UPDATE filings SET payment_status = $1 WHERE id = $2`,
-      [payment_status, filingId]
+      [String(payment_status), filingId]
     );
 
     const filingResult = await getPool().query(
@@ -117,13 +117,13 @@ export const updatePaymentStatusInline = async (req, res) => {
           `UPDATE payments
            SET payment_status = $1, updated_at = CURRENT_TIMESTAMP
            WHERE filing_id = $2`,
-          [payment_status, filingId]
+          [String(payment_status), filingId]
         );
       } else {
         await getPool().query(
           `INSERT INTO payments (customer_id, filing_id, payment_status, payment_date)
            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
-          [customerId, filingId, payment_status]
+          [customerId, filingId, String(payment_status)]
         );
       }
     }

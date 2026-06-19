@@ -1,18 +1,12 @@
 import { getPool } from "../config/db.js";
 
-
-
 // ==========================================
 // GET ALL FILINGS (ADMIN) — enriched for spreadsheet
 // ==========================================
 export const getFilings = async (req, res) => {
-
   try {
-
     const filingsResult = await getPool().query(`
-
       SELECT
-
         filings.id,
         filings.status,
         filings.payment_status,
@@ -33,17 +27,12 @@ export const getFilings = async (req, res) => {
         members.email              AS member_email,
         members.date_of_birth      AS member_dob,
         members.relationship
-
       FROM filings
-
       LEFT JOIN customers
       ON filings.customer_id = customers.id
-
       LEFT JOIN members
       ON filings.member_id = members.id
-
       ORDER BY filings.created_at DESC
-
     `);
 
     // Fetch custom column definitions
@@ -57,22 +46,17 @@ export const getFilings = async (req, res) => {
       filings : filingsResult.rows,
       customColumns: columnsResult.rows,
     });
-
   } catch (error) {
     console.log(error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // UPDATE FILING STATUS (admin — customer-visible)
 // ==========================================
 export const updateFilingStatus = async (req, res) => {
-
   try {
-
     const { filingId } = req.params;
     const { status }   = req.body;
 
@@ -95,39 +79,31 @@ export const updateFilingStatus = async (req, res) => {
     );
 
     return res.json({ success: true, message: "Status updated" });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // UPDATE PAYMENT STATUS (admin — customer-visible)
 // ==========================================
 export const updatePaymentStatusInline = async (req, res) => {
-
   try {
-
     const { filingId }     = req.params;
     const { payment_status } = req.body;
 
-    // Update directly on the filings row for simplicity in the spreadsheet
     await getPool().query(
       `UPDATE filings SET payment_status = $1 WHERE id = $2`,
       [payment_status, filingId]
     );
 
-    // Also upsert into payments table so paymentController stays in sync
     const filingResult = await getPool().query(
       `SELECT customer_id FROM filings WHERE id = $1`,
       [filingId]
     );
 
     if (filingResult.rows.length > 0) {
-
       const customerId = filingResult.rows[0].customer_id;
 
       const existing = await getPool().query(
@@ -152,26 +128,20 @@ export const updatePaymentStatusInline = async (req, res) => {
     }
 
     return res.json({ success: true });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // UPDATE CUSTOM FIELD VALUE for a single filing cell
 // ==========================================
 export const updateCustomField = async (req, res) => {
-
   try {
-
     const { filingId } = req.params;
     const { field_key, value } = req.body;
 
-    // Merge into JSONB — keeps existing keys intact
     await getPool().query(
       `UPDATE filings
        SET custom_fields = COALESCE(custom_fields, '{}') || jsonb_build_object($1::text, $2::text)
@@ -180,29 +150,23 @@ export const updateCustomField = async (req, res) => {
     );
 
     return res.json({ success: true });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // ADD CUSTOM COLUMN DEFINITION
 // ==========================================
 export const addCustomColumn = async (req, res) => {
-
   try {
-
     const { label } = req.body;
 
     if (!label || label.trim() === "") {
       return res.status(400).json({ success: false, message: "Label is required" });
     }
 
-    // Generate a safe key from the label
     const field_key = label.trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
@@ -217,22 +181,17 @@ export const addCustomColumn = async (req, res) => {
     );
 
     return res.status(201).json({ success: true, column: result.rows[0] });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // DELETE CUSTOM COLUMN
 // ==========================================
 export const deleteCustomColumn = async (req, res) => {
-
   try {
-
     const { fieldKey } = req.params;
 
     await getPool().query(
@@ -240,29 +199,23 @@ export const deleteCustomColumn = async (req, res) => {
       [fieldKey]
     );
 
-    // Optionally scrub the key from all filings' JSONB
     await getPool().query(
       `UPDATE filings SET custom_fields = custom_fields - $1`,
       [fieldKey]
     );
 
     return res.json({ success: true });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
-// CREATE FILING (customer-facing — unchanged)
+// CREATE FILING (customer-facing)
 // ==========================================
 export const createFiling = async (req, res) => {
-
   try {
-
     const { filing_type, assessment_year, notes, member_id } = req.body;
     const { email } = req.user;
 
@@ -286,31 +239,27 @@ export const createFiling = async (req, res) => {
       return res.status(404).json({ success: false, message: "Member not found" });
     }
 
+    // ✅ FIXED: Replaced raw object literal {} with stringified context '{}' for Postgres JSONB processing
     const filingResult = await getPool().query(
       `INSERT INTO filings
          (customer_id, member_id, filing_type, assessment_year, notes, status, progress, payment_status, custom_fields)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [customer.id, member_id, filing_type, assessment_year, notes || null, "Pending", 0, "Unpaid", {}]
+      [customer.id, member_id, filing_type, assessment_year, notes || null, "Pending", 0, "Unpaid", '{}']
     );
 
     return res.status(201).json({ success: true, filing: filingResult.rows[0] });
-
   } catch (error) {
-    console.log(error);
+    console.error("Filing Creation Error Details:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
-// GET SINGLE FILING (admin workspace — kept for document/message management)
+// GET SINGLE FILING (admin workspace)
 // ==========================================
 export const getSingleFiling = async (req, res) => {
-
   try {
-
     const { filingId } = req.params;
 
     const filingResult = await getPool().query(
@@ -358,22 +307,17 @@ export const getSingleFiling = async (req, res) => {
       messages  : messagesResult.rows,
       results   : resultsResult.rows,
     });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // REQUEST ADDITIONAL DOCUMENTS (admin)
 // ==========================================
 export const requestAdditionalDocument = async (req, res) => {
-
   try {
-
     const { filingId } = req.params;
     const { message }  = req.body;
 
@@ -388,22 +332,17 @@ export const requestAdditionalDocument = async (req, res) => {
     );
 
     return res.json({ success: true, message: "Request sent" });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // UPLOAD FILING RESULT (admin)
 // ==========================================
 export const uploadFilingResult = async (req, res) => {
-
   try {
-
     const { filingId } = req.params;
     const fileUrl  = req.file.path;
     const fileName = req.file.originalname;
@@ -419,22 +358,17 @@ export const uploadFilingResult = async (req, res) => {
     );
 
     return res.json({ success: true, message: "Result uploaded" });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // CUSTOMER — GET ALL FILINGS
 // ==========================================
 export const getCustomerFilingsForApp = async (req, res) => {
-
   try {
-
     const { email } = req.user;
 
     const customerResult = await getPool().query(
@@ -478,22 +412,17 @@ export const getCustomerFilingsForApp = async (req, res) => {
     );
 
     return res.json({ success: true, filings: result.rows });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
-
 // ==========================================
 // CUSTOMER — GET FILING RESULTS
 // ==========================================
 export const getCustomerFilingResults = async (req, res) => {
-
   try {
-
     const { email } = req.user;
 
     const customerResult = await getPool().query(
@@ -528,7 +457,6 @@ export const getCustomerFilingResults = async (req, res) => {
     );
 
     return res.json({ success: true, results: result.rows });
-
   } catch (error) {
     console.log(error);
     return res.status(500).json({ success: false, error: error.message });

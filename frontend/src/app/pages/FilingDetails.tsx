@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router";
 
 import { getAuth } from "firebase/auth";
@@ -29,25 +29,19 @@ export function FilingDetails() {
 
   const [messages, setMessages] = useState<any[]>([]);
 
+  // Keep state initialization to prevent breaking external component bindings
+  const [results, setResults] = useState<any[]>([]);
+
   const [requestMessage, setRequestMessage] = useState("");
 
   const [status, setStatus] = useState("Pending");
 
-  // Track deletion loads across independent items safely
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
 
 
-  useEffect(() => {
 
-    fetchFilingDetails();
-
-  }, []);
-
-
-
-
-  const fetchFilingDetails = async () => {
+  const fetchFilingDetails = useCallback(async () => {
 
     try {
 
@@ -81,18 +75,31 @@ export function FilingDetails() {
 
         setMessages(data.messages || []);
 
+        setResults(data.results || []);
+
         setStatus(data.filing.status);
       }
 
     } catch (error) {
 
-      console.log(error);
+      console.error(error);
 
     } finally {
 
       setLoading(false);
     }
-  };
+  }, [filingId]);
+
+
+
+
+  useEffect(() => {
+
+    if (filingId) {
+      fetchFilingDetails();
+    }
+
+  }, [filingId, fetchFilingDetails]);
 
 
 
@@ -139,7 +146,7 @@ export function FilingDetails() {
 
     } catch (error) {
 
-      console.log(error);
+      console.error(error);
     }
   };
 
@@ -188,7 +195,7 @@ export function FilingDetails() {
 
     } catch (error) {
 
-      console.log(error);
+      console.error(error);
     }
   };
 
@@ -237,7 +244,7 @@ export function FilingDetails() {
 
     } catch (error) {
 
-      console.log(error);
+      console.error(error);
 
       alert("An error occurred while deleting the document");
 
@@ -398,7 +405,7 @@ export function FilingDetails() {
 
 
 
-      {/* CARD 2: UPLOADED DOCUMENTS (WITH INDIVIDUAL DELETE OPTION) */}
+      {/* CARD 2: UPLOADED DOCUMENTS */}
       <Card className="rounded-3xl border-0 shadow-sm">
 
         <CardContent className="p-8">

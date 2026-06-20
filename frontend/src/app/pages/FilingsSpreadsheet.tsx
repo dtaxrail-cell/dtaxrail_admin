@@ -42,25 +42,6 @@ const FIXED_COLS = [
   { key: "payment_status",  label: "Payment"    },
 ] as const;
 
-type FixedKey = typeof FIXED_COLS[number]["key"];
-
-const STATUS_OPTIONS    = ["Pending", "Under Review", "Documents Requested", "Filed", "Completed"];
-const PAYMENT_OPTIONS   = ["Unpaid", "Paid"];
-
-// ─── status badge colours ─────────────────────────────────────────────────────
-
-const statusBg: Record<string, string> = {
-  Pending              : "bg-amber-50  text-amber-700  border-amber-200",
-  "Under Review"       : "bg-blue-50   text-blue-700   border-blue-200",
-  "Documents Requested": "bg-orange-50 text-orange-700 border-orange-200",
-  Filed                : "bg-purple-50 text-purple-700 border-purple-200",
-  Completed            : "bg-green-50  text-green-700  border-green-200",
-};
-const paymentBg: Record<string, string> = {
-  Paid   : "bg-green-50 text-green-700 border-green-200",
-  Unpaid : "bg-red-50   text-red-700   border-red-200",
-};
-
 // ─── tiny inline editable cell ───────────────────────────────────────────────
 
 function EditableCell({
@@ -76,7 +57,7 @@ function EditableCell({
   const [draft,   setDraft  ] = useState(value);
   const ref = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setDraft(value); }, [value]);
+  useEffect(() => { setDraft(value ?? ""); }, [value]);
   useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
 
   const commit = () => {
@@ -104,34 +85,6 @@ function EditableCell({
     >
       {value || <span className="text-gray-300 text-xs italic">—</span>}
     </span>
-  );
-}
-
-// ─── dropdown cell (status / payment) ────────────────────────────────────────
-
-function DropdownCell({
-  value,
-  options,
-  colorMap,
-  onChange,
-}: {
-  value: string;
-  options: string[];
-  colorMap: Record<string, string>;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`text-xs font-medium border rounded-lg px-2 py-1 outline-none cursor-pointer ${
-        colorMap[value] ?? "bg-gray-50 text-gray-600 border-gray-200"
-      }`}
-    >
-      {options.map((o) => (
-        <option key={o} value={o}>{o}</option>
-      ))}
-    </select>
   );
 }
 
@@ -273,11 +226,10 @@ export function FilingsSpreadsheet() {
     }
   };
 
-  // ── excel export (SheetJS) ─────────────────────────────────────────────────
+  // ── excel export ───────────────────────────────────────────────────────────
 
   const exportExcel = async () => {
 
-    // Dynamically import so SheetJS stays out of the main bundle
     const XLSX = await import("xlsx");
 
     const headers = [
@@ -291,18 +243,15 @@ export function FilingsSpreadsheet() {
       f.member_password ?? "",
       f.member_phone    ?? "",
       f.member_email    ?? "",
-      f.member_dob
-        ? new Date(f.member_dob).toLocaleDateString("en-IN")
-        : "",
-      f.status         ?? "",
-      f.payment_status ?? "",
+      f.member_dob ? new Date(f.member_dob).toLocaleDateString("en-IN") : "",
+      f.status          ?? "",
+      f.payment_status  ?? "",
       ...customColumns.map((c) => f.custom_fields?.[c.field_key] ?? ""),
     ]);
 
-    // Build worksheet
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
-    // Auto column widths
+    // Auto column widths based on longest value per column
     ws["!cols"] = headers.map((h, colIdx) => ({
       wch: Math.min(
         Math.max(h.length, ...rows.map((r) => String(r[colIdx] ?? "").length)) + 2,
@@ -310,18 +259,13 @@ export function FilingsSpreadsheet() {
       ),
     }));
 
-    // Freeze header row so it stays visible while scrolling
+    // Freeze top header row
     ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
 
-    // Workbook with one sheet
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Filings");
 
-    // Download
-    XLSX.writeFile(
-      wb,
-      `DTaxRail_Filings_${new Date().toISOString().slice(0, 10)}.xlsx`
-    );
+    XLSX.writeFile(wb, `DTaxRail_Filings_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // ── filter ─────────────────────────────────────────────────────────────────
@@ -359,6 +303,7 @@ export function FilingsSpreadsheet() {
         </div>
 
         <div className="flex items-center gap-2">
+
           {/* search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
@@ -404,7 +349,7 @@ export function FilingsSpreadsheet() {
             </button>
           )}
 
-          {/* export */}
+          {/* export excel */}
           <button
             onClick={exportExcel}
             className="flex items-center gap-1.5 px-3 py-2 text-sm bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors"
@@ -412,6 +357,7 @@ export function FilingsSpreadsheet() {
             <Download className="w-4 h-4" />
             Export Excel
           </button>
+
         </div>
       </div>
 
@@ -482,8 +428,6 @@ export function FilingsSpreadsheet() {
                   }`}
                 >
 
-                  {/* ── FIXED CELLS ── */}
-
                   {/* Full Name */}
                   <td className="px-1 py-1 border-r border-gray-100 min-w-[140px]">
                     <span className="block px-2 py-1 text-sm font-medium text-gray-800">
@@ -528,27 +472,23 @@ export function FilingsSpreadsheet() {
                     </span>
                   </td>
 
-                  {/* Status — editable dropdown, customer-visible */}
-                  <td className="px-2 py-2 border-r border-gray-100 min-w-[160px]">
-                    <DropdownCell
-                      value={filing.status ?? "Pending"}
-                      options={STATUS_OPTIONS}
-                      colorMap={statusBg}
-                      onChange={(v) => updateStatus(filing.id, v)}
+                  {/* Status */}
+                  <td className="px-1 py-1 border-r border-gray-100 min-w-[160px]">
+                    <EditableCell
+                      value={filing.status ?? ""}
+                      onCommit={(v) => updateStatus(filing.id, v)}
                     />
                   </td>
 
-                  {/* Payment — editable dropdown, customer-visible */}
-                  <td className="px-2 py-2 border-r border-gray-100 min-w-[100px]">
-                    <DropdownCell
-                      value={filing.payment_status ?? "Unpaid"}
-                      options={PAYMENT_OPTIONS}
-                      colorMap={paymentBg}
-                      onChange={(v) => updatePayment(filing.id, v)}
+                  {/* Payment */}
+                  <td className="px-1 py-1 border-r border-gray-100 min-w-[120px]">
+                    <EditableCell
+                      value={filing.payment_status ?? ""}
+                      onCommit={(v) => updatePayment(filing.id, v)}
                     />
                   </td>
 
-                  {/* ── CUSTOM CELLS (admin-editable, click to edit) ── */}
+                  {/* Custom cells */}
                   {customColumns.map((col) => (
                     <td key={col.field_key} className="px-1 py-1 border-r border-gray-100 min-w-[120px]">
                       <EditableCell
@@ -578,7 +518,7 @@ export function FilingsSpreadsheet() {
 
       {/* ── LEGEND ── */}
       <p className="text-xs text-gray-400 text-right">
-        Status & Payment columns are visible to customers in their app. Click custom cells to edit.
+        Status & Payment columns are visible to customers in their app. Click any cell to rewrite values.
       </p>
 
     </div>

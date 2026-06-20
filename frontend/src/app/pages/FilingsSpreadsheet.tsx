@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { auth } from "../../lib/firebase";
 import { API_BASE_URL } from "../../config/api";
 import { Download, Plus, Search } from "lucide-react";
@@ -54,19 +54,76 @@ export function FilingsSpreadsheet() {
   const [newColLabel, setNewColLabel] = useState("");
   const [addingCol, setAddingCol] = useState(false);
 
-  // ── fetch ──────────────────────────────────────────────────────────────────
+  // CONTROLLED WORKBOOK STATE: Holds the static formatted spreadsheet structure
+  const [sheetData, setSheetData] = useState<any[] | null>(null);
+
+  // ── fetch and format data ──────────────────────────────────────────────────
 
   const fetchData = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      // Cache-busting parameter prevents 304 Not Modified loops from browser cache
       const res = await fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
+      
       if (data.success) {
-        setFilings(data.filings ?? []);
-        setCustomColumns(data.customColumns ?? []);
+        const fetchedFilings: Filing[] = data.filings ?? [];
+        const fetchedCustomCols: CustomColumn[] = data.customColumns ?? [];
+        
+        setFilings(fetchedFilings);
+        setCustomColumns(fetchedCustomCols);
+
+        // Calculate explicit grid dimensions
+        const targetRowLen = Math.max(fetchedFilings.length + 20, 40);
+        const targetColLen = FIXED_COLS.length + fetchedCustomCols.length + 4;
+
+        // Create a rock-solid, fully unallocated 2D matrix layout grid map
+        const matrix: any[][] = Array.from({ length: targetRowLen }, () =>
+          Array.from({ length: targetColLen }, () => ({ v: "" }))
+        );
+
+        // Write Fixed Headers across Row Index [0]
+        FIXED_COLS.forEach((col, colIdx) => {
+          matrix[0][colIdx] = { v: col.label, bl: 1, bg: "#f3f4f6", ht: 1, vt: 1 };
+        });
+
+        // Write Custom Headers across Row Index [0]
+        fetchedCustomCols.forEach((col, colIdx) => {
+          const targetColIdx = FIXED_COLS.length + colIdx;
+          matrix[0][targetColIdx] = { v: col.label, bl: 1, bg: "#eff6ff", ht: 1, vt: 1 };
+        });
+
+        // Inject Data Records starting from Row Index [1]
+        fetchedFilings.forEach((filing, rIdx) => {
+          const rowIndex = rIdx + 1;
+          matrix[rowIndex][0] = { v: filing.member_name ?? "" };
+          matrix[rowIndex][1] = { v: filing.member_pan ?? "" };
+          matrix[rowIndex][2] = { v: filing.member_password ?? "" };
+          matrix[rowIndex][3] = { v: filing.member_phone ?? "" };
+          matrix[rowIndex][4] = { v: filing.member_email ?? "" };
+          matrix[rowIndex][5] = { v: filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "" };
+          matrix[rowIndex][6] = { v: filing.status ?? "" };
+          matrix[rowIndex][7] = { v: filing.payment_status ?? "" };
+
+          fetchedCustomCols.forEach((col, cIdx) => {
+            const targetColIdx = FIXED_COLS.length + cIdx;
+            const cellValue = filing.custom_fields?.[col.field_key] ?? "";
+            matrix[rowIndex][targetColIdx] = { v: cellValue };
+          });
+        });
+
+        // Set the final formatted configuration state directly once
+        setSheetData([
+          {
+            name: "Filings Matrix",
+            id: "sheet-1",
+            status: 1,
+            data: matrix,
+            columnlen: targetColLen,
+            rowlen: targetRowLen,
+          }
+        ]);
       }
     } catch (e) {
       console.error(e);
@@ -92,7 +149,6 @@ export function FilingsSpreadsheet() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
         body: JSON.stringify({ status }),
       });
-      setFilings((prev) => prev.map((f) => (f.id === filingId ? { ...f, status } : f)));
     } catch (e) {
       console.error(e);
     }
@@ -105,7 +161,6 @@ export function FilingsSpreadsheet() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
         body: JSON.stringify({ payment_status }),
       });
-      setFilings((prev) => prev.map((f) => (f.id === filingId ? { ...f, payment_status } : f)));
     } catch (e) {
       console.error(e);
     }
@@ -118,13 +173,6 @@ export function FilingsSpreadsheet() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
         body: JSON.stringify({ field_key, value }),
       });
-      setFilings((prev) =>
-        prev.map((f) =>
-          f.id === filingId
-            ? { ...f, custom_fields: { ...f.custom_fields, [field_key]: value } }
-            : f
-        )
-      );
     } catch (e) {
       console.error(e);
     }
@@ -142,9 +190,9 @@ export function FilingsSpreadsheet() {
       });
       const data = await res.json();
       if (data.success) {
-        setCustomColumns((prev) => [...prev, data.column]);
         setNewColLabel("");
         setAddingCol(false);
+        fetchData(); // Reload and let the workbook fully remount safely
       }
     } catch (e) {
       console.error(e);
@@ -155,13 +203,12 @@ export function FilingsSpreadsheet() {
 
   const exportExcel = async () => {
     const XLSX = await import("xlsx");
-
     const headers = [
       ...FIXED_COLS.map((c) => c.label),
       ...customColumns.map((c) => c.label),
     ];
 
-    const rows = filteredFilings.map((f) => [
+    const rows = filings.map((f) => [
       f.member_name ?? "",
       f.member_pan ?? "",
       f.member_password ?? "",
@@ -174,126 +221,34 @@ export function FilingsSpreadsheet() {
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-
     ws["!cols"] = headers.map((h, colIdx) => ({
-      wch: Math.min(
-        Math.max(h.length, ...rows.map((r) => String(r[colIdx] ?? "").length)) + 2,
-        40
-      ),
+      wch: Math.min(Math.max(h.length, ...rows.map((r) => String(r[colIdx] ?? "").length)) + 2, 40),
     }));
 
     ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
-
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Filings");
-
     XLSX.writeFile(wb, `DTaxRail_Filings_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  // ── filter ─────────────────────────────────────────────────────────────────
-
-  const filteredFilings = useMemo(() => {
-    const s = searchTerm.toLowerCase().trim();
-    if (!s) return filings;
-    return filings.filter((f) =>
-      [f.member_name, f.member_pan, f.member_phone, f.member_email, f.status, f.payment_status].some((v) =>
-        (v ?? "").toLowerCase().includes(s)
-      )
-    );
-  }, [filings, searchTerm]);
-
-  // ── dynamic matrix boundaries ──────────────────────────────────────────────
-
-  const TARGET_ROW_LEN = useMemo(() => Math.max(filteredFilings.length + 20, 40), [filteredFilings.length]);
-  const TARGET_COL_LEN = useMemo(() => FIXED_COLS.length + customColumns.length + 4, [customColumns.length]);
-
-  // ── transform data to fortunesheet cellular matrix format ──────────────────
-
-  const cellMatrixData = useMemo(() => {
-    // Build a perfectly allocated 2D array coordinates mapping
-    const matrix: any[][] = Array.from({ length: TARGET_ROW_LEN }, () =>
-      Array.from({ length: TARGET_COL_LEN }, () => ({ v: "" }))
-    );
-
-    // Set fixed column headers
-    FIXED_COLS.forEach((col, colIdx) => {
-      matrix[0][colIdx] = { v: col.label, bl: 1, bg: "#f3f4f6", ht: 1, vt: 1 };
-    });
-
-    // Set custom column headers
-    customColumns.forEach((col, colIdx) => {
-      const targetColIdx = FIXED_COLS.length + colIdx;
-      matrix[0][targetColIdx] = { v: col.label, bl: 1, bg: "#eff6ff", ht: 1, vt: 1 };
-    });
-
-    // Inject system row records
-    filteredFilings.forEach((filing, rIdx) => {
-      const rowIndex = rIdx + 1;
-
-      matrix[rowIndex][0] = { v: filing.member_name ?? "" };
-      matrix[rowIndex][1] = { v: filing.member_pan ?? "" };
-      matrix[rowIndex][2] = { v: filing.member_password ?? "" };
-      matrix[rowIndex][3] = { v: filing.member_phone ?? "" };
-      matrix[rowIndex][4] = { v: filing.member_email ?? "" };
-      matrix[rowIndex][5] = { v: filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "" };
-      matrix[rowIndex][6] = { v: filing.status ?? "" };
-      matrix[rowIndex][7] = { v: filing.payment_status ?? "" };
-
-      customColumns.forEach((col, cIdx) => {
-        const targetColIdx = FIXED_COLS.length + cIdx;
-        const cellValue = filing.custom_fields?.[col.field_key] ?? "";
-        matrix[rowIndex][targetColIdx] = { v: cellValue };
-      });
-    });
-
-    return matrix;
-  }, [filteredFilings, customColumns, TARGET_ROW_LEN, TARGET_COL_LEN]);
-
-  const sheetsConfig = useMemo(() => {
-    return [
-      {
-        name: "Filings Matrix",
-        id: "sheet-1",
-        status: 1,
-        data: cellMatrixData,
-        columnlen: TARGET_COL_LEN,
-        rowlen: TARGET_ROW_LEN,
-      },
-    ];
-  }, [cellMatrixData, TARGET_COL_LEN, TARGET_ROW_LEN]);
-
-  // Handle cell updates inside spreadsheet canvas
+  // Handle cell edit events directly inside the FortuneSheet component grid safely
   const handleCellChange = (newData: any[]) => {
+    if (!sheetData) return;
     const updatedGridMatrix = newData[0]?.data;
-    if (!updatedGridMatrix) return;
+    const oldGridMatrix = sheetData[0]?.data;
+    if (!updatedGridMatrix || !oldGridMatrix) return;
 
-    let hashDivergenceDetected = false;
+    // Track state matrix internally to prevent loop updates
+    setSheetData(newData);
 
     updatedGridMatrix.forEach((row: any[], rowIndex: number) => {
-      if (rowIndex === 0 || hashDivergenceDetected) return;
+      if (rowIndex === 0) return; // Ignore headers row
 
-      const mappingFiling = filteredFilings[rowIndex - 1];
+      const mappingFiling = filings[rowIndex - 1];
       if (!mappingFiling) return;
 
       row.forEach((cell: any, colIndex: number) => {
-        const oldVal = String(cellMatrixData[rowIndex]?.[colIndex]?.v ?? "");
-        const newVal = String(cell?.v ?? "");
-        if (oldVal !== newVal) {
-          hashDivergenceDetected = true;
-        }
-      });
-    });
-
-    if (!hashDivergenceDetected) return;
-
-    updatedGridMatrix.forEach((row: any[], rowIndex: number) => {
-      if (rowIndex === 0) return;
-
-      const mappingFiling = filteredFilings[rowIndex - 1];
-      if (!mappingFiling) return;
-
-      row.forEach((cell: any, colIndex: number) => {
-        const oldVal = String(cellMatrixData[rowIndex]?.[colIndex]?.v ?? "");
+        const oldVal = String(oldGridMatrix[rowIndex]?.[colIndex]?.v ?? "");
         const newVal = String(cell?.v ?? "");
 
         if (oldVal !== newVal) {
@@ -320,7 +275,7 @@ export function FilingsSpreadsheet() {
 
   // ── render ─────────────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (loading || !sheetData) {
     return (
       <div className="flex items-center justify-center h-64 text-text-mid font-medium">
         Loading spreadsheet canvas grid...
@@ -335,23 +290,11 @@ export function FilingsSpreadsheet() {
         <div>
           <h1 className="text-2xl font-bold text-text-dark">Filings</h1>
           <p className="text-sm text-text-mid mt-0.5">
-            {filteredFilings.length} filing{filteredFilings.length !== 1 ? "s" : ""}{" "}
-            {searchTerm ? "matched" : "total"}
+            {filings.length} filing{filings.length !== 1 ? "s" : ""} total
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
-            <input
-              placeholder="Search name, PAN, status..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-3 py-2 text-sm rounded-xl bg-white border border-gray-200 outline-none focus:border-blue-400 w-56 shadow-sm"
-            />
-          </div>
-
           {/* add column */}
           {addingCol ? (
             <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-blue-400 shadow-sm">
@@ -405,24 +348,17 @@ export function FilingsSpreadsheet() {
 
       {/* ── INTERACTIVE CANVAS SPREADSHEET CONTAINER ── */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative" style={{ height: "550px" }}>
-        {filings.length > 0 ? (
-          <Workbook
-            key={filings.length} // Force-remounts the spreadsheet when database arrays are loaded
-            data={sheetsConfig}
-            onChange={handleCellChange}
-            config={{
-              showinfobar: false,
-              sheetFormulaBar: true,
-              showsheetbar: false,
-              enableAddRow: true,
-              enableAddBackTop: false,
-            }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-400 text-sm font-medium">
-            No filings found matching your profile data layers.
-          </div>
-        )}
+        <Workbook
+          data={sheetData}
+          onChange={handleCellChange}
+          config={{
+            showinfobar: false,
+            sheetFormulaBar: true,
+            showsheetbar: false,
+            enableAddRow: true,
+            enableAddBackTop: false,
+          }}
+        />
       </div>
 
       {/* ── FOOTER FOOTNOTE CAPTION LEGEND ── */}

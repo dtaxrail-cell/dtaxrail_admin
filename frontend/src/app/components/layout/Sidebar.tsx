@@ -7,6 +7,7 @@ import {
   Phone,
   MessageSquare,
   Calculator,
+  Calendar, // ✅ Added for dynamic Government Deadlines management
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -20,6 +21,7 @@ const menuItems = [
   { icon: Phone,         label: "Callbacks", path: "/callbacks" },
   { icon: MessageSquare, label: "Support",   path: "/support"   },
   { icon: Calculator,    label: "Tax Tools", path: "/tax-tools" },
+  { icon: Calendar,      label: "Deadlines", path: "/deadlines" }, // ✅ Dynamic Govt Deadlines route link mapped
 ];
 
 interface SidebarProps {

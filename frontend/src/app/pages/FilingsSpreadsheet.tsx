@@ -384,17 +384,23 @@ export function FilingsSpreadsheet() {
 
       {/* ── INTERACTIVE CANVAS SPREADSHEET CONTAINER ── */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative" style={{ height: "550px" }}>
-        <Workbook
-          data={sheetsConfig}
-          onChange={handleCellChange}
-          config={{
-            showinfobar: false, // Hides branding bar header
-            sheetFormulaBar: true, // Enables full formula calculation bar (=SUM, etc)
-            showsheetbar: false, // Disables tab navigation bar since we only need 1 master sheet
-            enableAddRow: true,
-            enableAddBackTop: false,
-          }}
-        />
+        {filings.length > 0 ? (
+          <Workbook
+            data={sheetsConfig}
+            onChange={handleCellChange}
+            config={{
+              showinfobar: false, // Hides branding bar header
+              sheetFormulaBar: true, // Enables full formula calculation bar (=SUM, etc)
+              showsheetbar: false, // Disables tab navigation bar since we only need 1 master sheet
+              enableAddRow: true,
+              enableAddBackTop: false,
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-400 text-sm font-medium">
+            No filings found matching your profile data layers.
+          </div>
+        )}
       </div>
 
       {/* ── FOOTER FOOTNOTE CAPTION LEGEND ── */}

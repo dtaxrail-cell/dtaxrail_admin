@@ -15,7 +15,7 @@ const router = express.Router();
 
 
 
-// CUSTOMER — GET ACTIVE DEADLINES
+// CUSTOMER — GET ACTIVE DEADLINES (no auth)
 router.get(
   "/",
   getDeadlines

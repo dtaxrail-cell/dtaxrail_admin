@@ -10,7 +10,7 @@ export const getDeadlines = async (req, res) => {
   try {
 
     const result = await getPool().query(`
-      SELECT *
+      SELECT id, title, date, is_active
       FROM deadlines
       WHERE is_active = true
       ORDER BY date ASC
@@ -34,7 +34,7 @@ export const getAdminDeadlines = async (req, res) => {
   try {
 
     const result = await getPool().query(`
-      SELECT *
+      SELECT id, title, date, is_active, created_at, updated_at
       FROM deadlines
       ORDER BY date ASC
     `);
@@ -56,17 +56,17 @@ export const createDeadline = async (req, res) => {
 
   try {
 
-    const { title, date, color_tag } = req.body;
+    const { title, date } = req.body;
 
     if (!title || !date) {
       return res.status(400).json({ success: false, message: "Title and date are required" });
     }
 
     const result = await getPool().query(
-      `INSERT INTO deadlines (title, date, color_tag)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [title.trim(), date, color_tag ?? "pending"]
+      `INSERT INTO deadlines (title, date)
+       VALUES ($1, $2)
+       RETURNING id, title, date, is_active`,
+      [title.trim(), date]
     );
 
     return res.status(201).json({ success: true, deadline: result.rows[0] });
@@ -87,7 +87,7 @@ export const updateDeadline = async (req, res) => {
   try {
 
     const { deadlineId } = req.params;
-    const { title, date, color_tag, is_active } = req.body;
+    const { title, date, is_active } = req.body;
 
     const existing = await getPool().query(
       `SELECT * FROM deadlines WHERE id = $1`,
@@ -103,17 +103,15 @@ export const updateDeadline = async (req, res) => {
     const result = await getPool().query(
       `UPDATE deadlines
        SET
-         title     = $1,
-         date      = $2,
-         color_tag = $3,
-         is_active = $4,
+         title      = $1,
+         date       = $2,
+         is_active  = $3,
          updated_at = CURRENT_TIMESTAMP
-       WHERE id = $5
-       RETURNING *`,
+       WHERE id = $4
+       RETURNING id, title, date, is_active`,
       [
         title     ?? d.title,
         date      ?? d.date,
-        color_tag ?? d.color_tag,
         is_active ?? d.is_active,
         deadlineId,
       ]

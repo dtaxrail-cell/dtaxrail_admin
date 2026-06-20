@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { auth } from "../../lib/firebase";
 import { API_BASE_URL } from "../../config/api";
 import { Download, Plus } from "lucide-react";
@@ -41,9 +41,10 @@ const FIXED_COLS = [
   { key: "payment_status",  label: "Payment"    },
 ] as const;
 
-// ─── helper: build a single celldata entry ────────────────────────────────────
-// Matches the official FortuneSheet format EXACTLY:
-// { r, c, v: { v, m, ct: { fa, t } } }
+// ✅ Fixed column count, much higher so it feels "unlimited" — grid will
+// always show plenty of empty trailing columns no matter how many custom
+// columns are added, and grows further if needed (see fetchData below).
+const MIN_TOTAL_COLUMNS = 60;
 
 function cell(r: number, c: number, value: string, extra: Record<string, any> = {}) {
   return {
@@ -66,6 +67,72 @@ export function FilingsSpreadsheet() {
   const [addingCol, setAddingCol] = useState(false);
   const [sheetData, setSheetData] = useState<any[] | null>(null);
 
+  const buildSheet = (fetchedFilings: Filing[], fetchedCustomCols: CustomColumn[]) => {
+    const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
+    const celldata: any[] = [];
+
+    FIXED_COLS.forEach((col, colIdx) => {
+      celldata.push(cell(0, colIdx, col.label, { bl: 1, bg: "#f3f4f6" }));
+    });
+    fetchedCustomCols.forEach((col, colIdx) => {
+      celldata.push(cell(0, FIXED_COLS.length + colIdx, col.label, { bl: 1, bg: "#eff6ff" }));
+    });
+
+    fetchedFilings.forEach((filing, rIdx) => {
+      const r = rIdx + 1;
+      celldata.push(cell(r, 0, filing.member_name ?? ""));
+      celldata.push(cell(r, 1, filing.member_pan ?? ""));
+      celldata.push(cell(r, 2, filing.member_password ?? ""));
+      celldata.push(cell(r, 3, filing.member_phone ?? ""));
+      celldata.push(cell(r, 4, filing.member_email ?? ""));
+      celldata.push(
+        cell(r, 5, filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "")
+      );
+      celldata.push(cell(r, 6, filing.status ?? ""));
+      celldata.push(cell(r, 7, filing.payment_status ?? ""));
+
+      fetchedCustomCols.forEach((col, cIdx) => {
+        const val = filing.custom_fields?.[col.field_key] ?? "";
+        celldata.push(cell(r, FIXED_COLS.length + cIdx, val));
+      });
+    });
+
+    return [
+      {
+        name: "Filings Matrix",
+        id: "sheet-1",
+        color: "",
+        status: 1,
+        order: 0,
+        hide: 0,
+        row: Math.max(fetchedFilings.length + 20, 40),
+        // ✅ Always at least MIN_TOTAL_COLUMNS (60 → up to column "BH"),
+        // and grows further automatically if custom columns exceed that.
+        column: Math.max(totalDataCols + 10, MIN_TOTAL_COLUMNS),
+        celldata,
+        config: {},
+        scrollLeft: 0,
+        scrollTop: 0,
+        luckysheet_select_save: [],
+        calcChain: [],
+        isPivotTable: false,
+        pivotTable: {},
+        filter_select: {},
+        filter: null,
+        luckysheet_conditionformat_save: [],
+        luckysheet_alternateformat_save: [],
+        dataVerification: {},
+        hyperlink: {},
+        luckysheet_freezen: {},
+        zoomRatio: 1,
+        image: [],
+        showGridLines: 1,
+        defaultRowHeight: 19,
+        defaultColWidth: 73,
+      },
+    ];
+  };
+
   const fetchData = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
@@ -80,75 +147,7 @@ export function FilingsSpreadsheet() {
 
         setFilings(fetchedFilings);
         setCustomColumns(fetchedCustomCols);
-
-        const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
-
-        const celldata: any[] = [];
-
-        // Header row (row 0)
-        FIXED_COLS.forEach((col, colIdx) => {
-          celldata.push(cell(0, colIdx, col.label, { bl: 1, bg: "#f3f4f6" }));
-        });
-        fetchedCustomCols.forEach((col, colIdx) => {
-          celldata.push(cell(0, FIXED_COLS.length + colIdx, col.label, { bl: 1, bg: "#eff6ff" }));
-        });
-
-        // Data rows (row 1+)
-        fetchedFilings.forEach((filing, rIdx) => {
-          const r = rIdx + 1;
-          celldata.push(cell(r, 0, filing.member_name ?? ""));
-          celldata.push(cell(r, 1, filing.member_pan ?? ""));
-          celldata.push(cell(r, 2, filing.member_password ?? ""));
-          celldata.push(cell(r, 3, filing.member_phone ?? ""));
-          celldata.push(cell(r, 4, filing.member_email ?? ""));
-          celldata.push(
-            cell(r, 5, filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "")
-          );
-          celldata.push(cell(r, 6, filing.status ?? ""));
-          celldata.push(cell(r, 7, filing.payment_status ?? ""));
-
-          fetchedCustomCols.forEach((col, cIdx) => {
-            const val = filing.custom_fields?.[col.field_key] ?? "";
-            celldata.push(cell(r, FIXED_COLS.length + cIdx, val));
-          });
-        });
-
-        // ✅ Debug aid — verify the actual payload shape in the browser console
-        console.log("FortuneSheet celldata sample:", celldata.slice(0, 10));
-        console.log("FortuneSheet celldata total entries:", celldata.length);
-
-        setSheetData([
-          {
-            name: "Filings Matrix",
-            id: "sheet-1",
-            color: "",
-            status: 1,
-            order: 0,
-            hide: 0,
-            row: Math.max(fetchedFilings.length + 20, 40),
-            column: Math.max(totalDataCols + 4, 18),
-            celldata,
-            config: {},
-            scrollLeft: 0,
-            scrollTop: 0,
-            luckysheet_select_save: [],
-            calcChain: [],
-            isPivotTable: false,
-            pivotTable: {},
-            filter_select: {},
-            filter: null,
-            luckysheet_conditionformat_save: [],
-            luckysheet_alternateformat_save: [],
-            dataVerification: {},
-            hyperlink: {},
-            luckysheet_freezen: {},
-            zoomRatio: 1,
-            image: [],
-            showGridLines: 1,
-            defaultRowHeight: 19,
-            defaultColWidth: 73,
-          },
-        ]);
+        setSheetData(buildSheet(fetchedFilings, fetchedCustomCols));
       }
     } catch (e) {
       console.error(e);
@@ -193,6 +192,19 @@ export function FilingsSpreadsheet() {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
         body: JSON.stringify({ field_key, value }),
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // ── delete custom column on the BACKEND ────────────────────────────────────
+
+  const deleteColumnBackend = async (field_key: string) => {
+    try {
+      await fetch(`${API_BASE_URL}/filings/custom-columns/${field_key}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${await token()}` },
       });
     } catch (e) {
       console.error(e);
@@ -244,6 +256,8 @@ export function FilingsSpreadsheet() {
     XLSX.writeFile(wb, `DTaxRail_Filings_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  // ── cell value changes (status/payment/custom fields) ──────────────────────
+
   const handleCellChange = (newData: any[]) => {
     if (!sheetData) return;
     const updatedMatrix = newData[0]?.data;
@@ -280,6 +294,39 @@ export function FilingsSpreadsheet() {
 
     setSheetData(newData);
   };
+
+  // ── structural ops (column delete via right-click) ──────────────────────────
+  // FortuneSheet emits onOp for structural changes like deleteRowCol, separate
+  // from onChange (which only covers cell value edits). This is the reliable
+  // way to detect "admin right-clicked a column header and chose Delete".
+
+  const handleOp = useCallback(
+    (ops: any[]) => {
+      ops.forEach((op) => {
+        if (op?.op !== "deleteRowCol") return;
+        const value = op.value;
+        if (!value || value.type !== "column") return;
+
+        // value.index = starting column index that was deleted, value.count = how many
+        const startCol = value.index;
+        const count = value.count ?? 1;
+
+        for (let c = startCol; c < startCol + count; c++) {
+          const customIdx = c - FIXED_COLS.length;
+          if (customIdx < 0) continue; // a fixed column was deleted — ignore, not allowed to remove those server-side
+          const colToDelete = customColumns[customIdx];
+          if (colToDelete) {
+            deleteColumnBackend(colToDelete.field_key);
+          }
+        }
+
+        // Resync from backend after a short delay to reflect the real state
+        // (also protects against FortuneSheet's own local-only column shift)
+        setTimeout(() => fetchData(), 300);
+      });
+    },
+    [customColumns]
+  );
 
   if (loading || !sheetData) {
     return (
@@ -347,6 +394,7 @@ export function FilingsSpreadsheet() {
         <Workbook
           data={sheetData}
           onChange={handleCellChange}
+          onOp={handleOp}
           config={{
             showinfobar: false,
             sheetFormulaBar: true,
@@ -358,7 +406,7 @@ export function FilingsSpreadsheet() {
       </div>
 
       <p className="text-xs text-gray-400 text-right italic font-medium">
-        Status & Payment updates sync with customers. Type custom equations directly inside cell boxes to execute evaluations.
+        Status & Payment updates sync with customers. Right-click a custom column header to delete it permanently. Type custom equations directly inside cell boxes to execute evaluations.
       </p>
     </div>
   );

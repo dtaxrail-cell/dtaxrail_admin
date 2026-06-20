@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { auth } from "../../lib/firebase";
 import { API_BASE_URL } from "../../config/api";
-import { Download, Plus, Trash2, Search, ExternalLink } from "lucide-react";
-import { Link } from "react-router";
+import { Download, Plus, Search } from "lucide-react";
+// Import the core FortuneSheet Canvas Workbook
+import { Workbook } from "@fortune-sheet/react";
+import "@fortune-sheet/react/dist/index.css";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -42,70 +44,22 @@ const FIXED_COLS = [
   { key: "payment_status",  label: "Payment"    },
 ] as const;
 
-// ─── tiny inline editable cell ───────────────────────────────────────────────
-
-function EditableCell({
-  value,
-  onCommit,
-  className = "",
-}: {
-  value: string;
-  onCommit: (v: string) => void;
-  className?: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft,   setDraft  ] = useState(value);
-  const ref = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { setDraft(value ?? ""); }, [value]);
-  useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
-
-  const commit = () => {
-    setEditing(false);
-    if (draft !== value) onCommit(draft);
-  };
-
-  if (editing) {
-    return (
-      <input
-        ref={ref}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-        className={`w-full min-w-[80px] px-2 py-1 text-sm border border-blue-400 rounded outline-none bg-white ${className}`}
-      />
-    );
-  }
-
-  return (
-    <span
-      onClick={() => setEditing(true)}
-      className={`block w-full min-w-[80px] px-2 py-1 text-sm rounded cursor-text hover:bg-blue-50 transition-colors ${className}`}
-    >
-      {value || <span className="text-gray-300 text-xs italic">—</span>}
-    </span>
-  );
-}
-
 // ─── main component ──────────────────────────────────────────────────────────
 
 export function FilingsSpreadsheet() {
-
-  const [filings,       setFilings      ] = useState<Filing[]>([]);
+  const [filings, setFilings] = useState<Filing[]>([]);
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
-  const [loading,       setLoading      ] = useState(true);
-  const [searchTerm,    setSearchTerm   ] = useState("");
-  const [newColLabel,   setNewColLabel  ] = useState("");
-  const [addingCol,     setAddingCol    ] = useState(false);
-  const [saving,        setSaving       ] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [newColLabel, setNewColLabel] = useState("");
+  const [addingCol, setAddingCol] = useState(false);
 
   // ── fetch ──────────────────────────────────────────────────────────────────
 
   const fetchData = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      const res   = await fetch(`${API_BASE_URL}/filings`, {
+      const res = await fetch(`${API_BASE_URL}/filings`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -120,56 +74,48 @@ export function FilingsSpreadsheet() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   // ── token helper ───────────────────────────────────────────────────────────
 
-  const token = async () => auth.currentUser?.getIdToken() ?? "";
+  const token = async () => (await auth.currentUser?.getIdToken()) ?? "";
 
-  // ── update status ──────────────────────────────────────────────────────────
+  // ── update functions wired directly to spreadsheet changes ──────────────────
 
   const updateStatus = async (filingId: string, status: string) => {
-    setSaving((s) => ({ ...s, [filingId + "_status"]: true }));
     try {
       await fetch(`${API_BASE_URL}/filings/status/${filingId}`, {
-        method  : "PUT",
-        headers : { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body    : JSON.stringify({ status }),
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ status }),
       });
-      setFilings((prev) =>
-        prev.map((f) => (f.id === filingId ? { ...f, status } : f))
-      );
-    } finally {
-      setSaving((s) => ({ ...s, [filingId + "_status"]: false }));
+      setFilings((prev) => prev.map((f) => (f.id === filingId ? { ...f, status } : f)));
+    } catch (e) {
+      console.error(e);
     }
   };
-
-  // ── update payment ─────────────────────────────────────────────────────────
 
   const updatePayment = async (filingId: string, payment_status: string) => {
-    setSaving((s) => ({ ...s, [filingId + "_payment"]: true }));
     try {
       await fetch(`${API_BASE_URL}/filings/payment/${filingId}`, {
-        method  : "PUT",
-        headers : { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body    : JSON.stringify({ payment_status }),
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ payment_status }),
       });
-      setFilings((prev) =>
-        prev.map((f) => (f.id === filingId ? { ...f, payment_status } : f))
-      );
-    } finally {
-      setSaving((s) => ({ ...s, [filingId + "_payment"]: false }));
+      setFilings((prev) => prev.map((f) => (f.id === filingId ? { ...f, payment_status } : f)));
+    } catch (e) {
+      console.error(e);
     }
   };
-
-  // ── update custom field cell ───────────────────────────────────────────────
 
   const updateCustomField = async (filingId: string, field_key: string, value: string) => {
     try {
       await fetch(`${API_BASE_URL}/filings/custom-field/${filingId}`, {
-        method  : "PUT",
-        headers : { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body    : JSON.stringify({ field_key, value }),
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ field_key, value }),
       });
       setFilings((prev) =>
         prev.map((f) =>
@@ -188,10 +134,10 @@ export function FilingsSpreadsheet() {
   const addColumn = async () => {
     if (!newColLabel.trim()) return;
     try {
-      const res  = await fetch(`${API_BASE_URL}/filings/custom-columns`, {
-        method  : "POST",
-        headers : { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body    : JSON.stringify({ label: newColLabel.trim() }),
+      const res = await fetch(`${API_BASE_URL}/filings/custom-columns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ label: newColLabel.trim() }),
       });
       const data = await res.json();
       if (data.success) {
@@ -204,32 +150,9 @@ export function FilingsSpreadsheet() {
     }
   };
 
-  // ── delete custom column ───────────────────────────────────────────────────
-
-  const deleteColumn = async (field_key: string) => {
-    if (!confirm(`Delete column "${field_key}" from all filings?`)) return;
-    try {
-      await fetch(`${API_BASE_URL}/filings/custom-columns/${field_key}`, {
-        method  : "DELETE",
-        headers : { Authorization: `Bearer ${await token()}` },
-      });
-      setCustomColumns((prev) => prev.filter((c) => c.field_key !== field_key));
-      setFilings((prev) =>
-        prev.map((f) => {
-          const cf = { ...f.custom_fields };
-          delete cf[field_key];
-          return { ...f, custom_fields: cf };
-        })
-      );
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   // ── excel export ───────────────────────────────────────────────────────────
 
   const exportExcel = async () => {
-
     const XLSX = await import("xlsx");
 
     const headers = [
@@ -238,20 +161,19 @@ export function FilingsSpreadsheet() {
     ];
 
     const rows = filteredFilings.map((f) => [
-      f.member_name     ?? "",
-      f.member_pan      ?? "",
+      f.member_name ?? "",
+      f.member_pan ?? "",
       f.member_password ?? "",
-      f.member_phone    ?? "",
-      f.member_email    ?? "",
+      f.member_phone ?? "",
+      f.member_email ?? "",
       f.member_dob ? new Date(f.member_dob).toLocaleDateString("en-IN") : "",
-      f.status          ?? "",
-      f.payment_status  ?? "",
+      f.status ?? "",
+      f.payment_status ?? "",
       ...customColumns.map((c) => f.custom_fields?.[c.field_key] ?? ""),
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
-    // Auto column widths based on longest value per column
     ws["!cols"] = headers.map((h, colIdx) => ({
       wch: Math.min(
         Math.max(h.length, ...rows.map((r) => String(r[colIdx] ?? "").length)) + 2,
@@ -259,7 +181,6 @@ export function FilingsSpreadsheet() {
       ),
     }));
 
-    // Freeze top header row
     ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
 
     const wb = XLSX.utils.book_new();
@@ -274,36 +195,131 @@ export function FilingsSpreadsheet() {
     const s = searchTerm.toLowerCase().trim();
     if (!s) return filings;
     return filings.filter((f) =>
-      [f.member_name, f.member_pan, f.member_phone, f.member_email, f.status, f.payment_status]
-        .some((v) => (v ?? "").toLowerCase().includes(s))
+      [f.member_name, f.member_pan, f.member_phone, f.member_email, f.status, f.payment_status].some((v) =>
+        (v ?? "").toLowerCase().includes(s)
+      )
     );
   }, [filings, searchTerm]);
+
+  // ── transform data to fortunesheet cellular matrix format ──────────────────
+
+  const cellMatrixData = useMemo(() => {
+    const headerRow: any[] = [];
+
+    // Create styled header cells for fixed columns
+    FIXED_COLS.forEach((col) => {
+      headerRow.push({ v: col.label, bl: 1, bg: "#f3f4f6", ht: 1, vt: 1 });
+    });
+
+    // Create styled header cells for dynamic custom columns
+    customColumns.forEach((col) => {
+      headerRow.push({ v: col.label, bl: 1, bg: "#eff6ff", ht: 1, vt: 1 });
+    });
+
+    const matrix: any[][] = [headerRow];
+
+    // Build row blocks for every single filing record matching search metric filters
+    filteredFilings.forEach((filing) => {
+      const rowCells: any[] = [
+        { v: filing.member_name ?? "" },
+        { v: filing.member_pan ?? "" },
+        { v: filing.member_password ?? "" },
+        { v: filing.member_phone ?? "" },
+        { v: filing.member_email ?? "" },
+        { v: filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "" },
+        { v: filing.status ?? "" },
+        { v: filing.payment_status ?? "" },
+      ];
+
+      // Add values for custom dynamic field columns
+      customColumns.forEach((col) => {
+        const cellValue = filing.custom_fields?.[col.field_key] ?? "";
+        rowCells.push({ v: cellValue });
+      });
+
+      matrix.push(rowCells);
+    });
+
+    return matrix;
+  }, [filteredFilings, customColumns]);
+
+  // FortuneSheet component data payload structural bundle config object array
+  const sheetsConfig = useMemo(() => {
+    return [
+      {
+        name: "Filings Matrix",
+        id: "sheet-1",
+        status: 1,
+        data: cellMatrixData,
+        columnlen: FIXED_COLS.length + customColumns.length + 2,
+        rowlen: Math.max(cellMatrixData.length + 10, 25),
+      },
+    ];
+  }, [cellMatrixData, customColumns.length]);
+
+  // Handle cell edit events directly inside the FortuneSheet component grid
+  const handleCellChange = (newData: any[]) => {
+    const updatedGridMatrix = newData[0]?.data;
+    if (!updatedGridMatrix) return;
+
+    // Loop through cells to look for any modifications compared to current state cache
+    updatedGridMatrix.forEach((row: any[], rowIndex: number) => {
+      if (rowIndex === 0) return; // Ignore edits made to header cells labels row
+
+      const mappingFiling = filteredFilings[rowIndex - 1];
+      if (!mappingFiling) return;
+
+      row.forEach((cell: any, colIndex: number) => {
+        const oldVal = String(cellMatrixData[rowIndex]?.[colIndex]?.v ?? "");
+        const newVal = String(cell?.v ?? "");
+
+        // If a cell's string content was altered by user, fire matching update endpoint
+        if (oldVal !== newVal) {
+          const totalFixedCount = FIXED_COLS.length;
+
+          if (colIndex < totalFixedCount) {
+            const fieldKey = FIXED_COLS[colIndex].key;
+            if (fieldKey === "status") {
+              updateStatus(mappingFiling.id, newVal);
+            } else if (fieldKey === "payment_status") {
+              updatePayment(mappingFiling.id, newVal);
+            }
+          } else {
+            // Find custom column key corresponding to this index
+            const targetCustomIndex = colIndex - totalFixedCount;
+            const customColKey = customColumns[targetCustomIndex]?.field_key;
+            if (customColKey) {
+              updateCustomField(mappingFiling.id, customColKey, newVal);
+            }
+          }
+        }
+      });
+    });
+  };
 
   // ── render ─────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-text-mid">
-        Loading spreadsheet...
+      <div className="flex items-center justify-center h-64 text-text-mid font-medium">
+        Loading spreadsheet canvas grid...
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-
       {/* ── HEADER ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-text-dark">Filings</h1>
           <p className="text-sm text-text-mid mt-0.5">
-            {filteredFilings.length} filing{filteredFilings.length !== 1 ? "s" : ""}
-            {searchTerm ? " matched" : " total"}
+            {filteredFilings.length} filing{filteredFilings.length !== 1 ? "s" : ""}{" "}
+            {searchTerm ? "matched" : "total"}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-
           {/* search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
@@ -311,30 +327,36 @@ export function FilingsSpreadsheet() {
               placeholder="Search name, PAN, status..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-3 py-2 text-sm rounded-xl bg-white border border-gray-200 outline-none focus:border-blue-400 w-56"
+              className="pl-9 pr-3 py-2 text-sm rounded-xl bg-white border border-gray-200 outline-none focus:border-blue-400 w-56 shadow-sm"
             />
           </div>
 
           {/* add column */}
           {addingCol ? (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-blue-400 shadow-sm">
               <input
                 autoFocus
                 placeholder="Column name"
                 value={newColLabel}
                 onChange={(e) => setNewColLabel(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") addColumn(); if (e.key === "Escape") setAddingCol(false); }}
-                className="px-3 py-2 text-sm rounded-xl border border-blue-400 outline-none w-36"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addColumn();
+                  if (e.key === "Escape") setAddingCol(false);
+                }}
+                className="px-3 py-1 text-sm outline-none w-36"
               />
               <button
                 onClick={addColumn}
-                className="px-3 py-2 text-sm bg-blue-600 text-white rounded-xl hover:bg-blue-700"
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
               >
                 Add
               </button>
               <button
-                onClick={() => { setAddingCol(false); setNewColLabel(""); }}
-                className="px-3 py-2 text-sm bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200"
+                onClick={() => {
+                  setAddingCol(false);
+                  setNewColLabel("");
+                }}
+                className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
               >
                 Cancel
               </button>
@@ -342,7 +364,7 @@ export function FilingsSpreadsheet() {
           ) : (
             <button
               onClick={() => setAddingCol(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:text-blue-600 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:text-blue-600 transition-colors shadow-sm font-medium"
             >
               <Plus className="w-4 h-4" />
               Add column
@@ -352,175 +374,33 @@ export function FilingsSpreadsheet() {
           {/* export excel */}
           <button
             onClick={exportExcel}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors shadow-sm font-medium"
           >
             <Download className="w-4 h-4" />
             Export Excel
           </button>
-
         </div>
       </div>
 
-      {/* ── SPREADSHEET ── */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-
-            {/* HEADER ROW */}
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-
-                {/* fixed col headers */}
-                {FIXED_COLS.map((col) => (
-                  <th
-                    key={col.key}
-                    className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap border-r border-gray-100 last:border-r-0"
-                  >
-                    {col.label}
-                  </th>
-                ))}
-
-                {/* custom col headers */}
-                {customColumns.map((col) => (
-                  <th
-                    key={col.field_key}
-                    className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap border-r border-gray-100 group"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>{col.label}</span>
-                      <button
-                        onClick={() => deleteColumn(col.field_key)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600 ml-1"
-                        title="Delete column"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </th>
-                ))}
-
-                {/* workspace link col */}
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                  Workspace
-                </th>
-
-              </tr>
-            </thead>
-
-            {/* DATA ROWS */}
-            <tbody>
-              {filteredFilings.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={FIXED_COLS.length + customColumns.length + 1}
-                    className="py-16 text-center text-gray-400 text-sm"
-                  >
-                    {searchTerm ? "No filings match your search" : "No filings yet — they appear here once a customer files"}
-                  </td>
-                </tr>
-              )}
-
-              {filteredFilings.map((filing, i) => (
-                <tr
-                  key={filing.id}
-                  className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${
-                    i % 2 === 0 ? "bg-white" : "bg-gray-50/40"
-                  }`}
-                >
-
-                  {/* Full Name */}
-                  <td className="px-1 py-1 border-r border-gray-100 min-w-[140px]">
-                    <span className="block px-2 py-1 text-sm font-medium text-gray-800">
-                      {filing.member_name || "—"}
-                    </span>
-                  </td>
-
-                  {/* PAN */}
-                  <td className="px-1 py-1 border-r border-gray-100 min-w-[110px]">
-                    <span className="block px-2 py-1 text-sm font-mono text-gray-700">
-                      {filing.member_pan || "—"}
-                    </span>
-                  </td>
-
-                  {/* Password */}
-                  <td className="px-1 py-1 border-r border-gray-100 min-w-[110px]">
-                    <span className="block px-2 py-1 text-sm font-mono text-gray-500">
-                      {filing.member_password || "—"}
-                    </span>
-                  </td>
-
-                  {/* Phone */}
-                  <td className="px-1 py-1 border-r border-gray-100 min-w-[110px]">
-                    <span className="block px-2 py-1 text-sm text-gray-700">
-                      {filing.member_phone || "—"}
-                    </span>
-                  </td>
-
-                  {/* Email */}
-                  <td className="px-1 py-1 border-r border-gray-100 min-w-[170px]">
-                    <span className="block px-2 py-1 text-sm text-gray-700 truncate max-w-[160px]" title={filing.member_email}>
-                      {filing.member_email || "—"}
-                    </span>
-                  </td>
-
-                  {/* DOB */}
-                  <td className="px-1 py-1 border-r border-gray-100 min-w-[100px]">
-                    <span className="block px-2 py-1 text-sm text-gray-600">
-                      {filing.member_dob
-                        ? new Date(filing.member_dob).toLocaleDateString("en-IN")
-                        : "—"}
-                    </span>
-                  </td>
-
-                  {/* Status */}
-                  <td className="px-1 py-1 border-r border-gray-100 min-w-[160px]">
-                    <EditableCell
-                      value={filing.status ?? ""}
-                      onCommit={(v) => updateStatus(filing.id, v)}
-                    />
-                  </td>
-
-                  {/* Payment */}
-                  <td className="px-1 py-1 border-r border-gray-100 min-w-[120px]">
-                    <EditableCell
-                      value={filing.payment_status ?? ""}
-                      onCommit={(v) => updatePayment(filing.id, v)}
-                    />
-                  </td>
-
-                  {/* Custom cells */}
-                  {customColumns.map((col) => (
-                    <td key={col.field_key} className="px-1 py-1 border-r border-gray-100 min-w-[120px]">
-                      <EditableCell
-                        value={filing.custom_fields?.[col.field_key] ?? ""}
-                        onCommit={(v) => updateCustomField(filing.id, col.field_key, v)}
-                      />
-                    </td>
-                  ))}
-
-                  {/* Workspace link */}
-                  <td className="px-2 py-2 min-w-[90px]">
-                    <Link to={`/filings/${filing.id}`}>
-                      <button className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
-                        Open
-                        <ExternalLink className="w-3 h-3" />
-                      </button>
-                    </Link>
-                  </td>
-
-                </tr>
-              ))}
-            </tbody>
-
-          </table>
-        </div>
+      {/* ── INTERACTIVE CANVAS SPREADSHEET CONTAINER ── */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative" style={{ height: "550px" }}>
+        <Workbook
+          data={sheetsConfig}
+          onChange={handleCellChange}
+          config={{
+            showinfobar: false, // Hides branding bar header
+            sheetFormulaBar: true, // Enables full formula calculation bar (=SUM, etc)
+            showsheetbar: false, // Disables tab navigation bar since we only need 1 master sheet
+            enableAddRow: true,
+            enableAddBackTop: false,
+          }}
+        />
       </div>
 
-      {/* ── LEGEND ── */}
-      <p className="text-xs text-gray-400 text-right">
-        Status & Payment columns are visible to customers in their app. Click any cell to rewrite values.
+      {/* ── FOOTER FOOTNOTE CAPTION LEGEND ── */}
+      <p className="text-xs text-gray-400 text-right italic font-medium">
+        Status & Payment updates sync with customers. Type custom equations directly inside cell boxes to execute evaluations.
       </p>
-
     </div>
   );
 }

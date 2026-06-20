@@ -9,6 +9,7 @@ import { DocumentDetails }    from "./pages/DocumentDetails";
 import { Callbacks }          from "./pages/Callbacks";
 import { Support }            from "./pages/Support";
 import { TaxTools }           from "./pages/TaxTools";
+import { Deadlines }          from "./pages/Deadlines"; // ✅ 1. Added missing Deadlines import
 
 import { MainLayout }    from "./components/layout/MainLayout";
 import { AuthProvider }  from "./contexts/AuthContext";
@@ -118,6 +119,18 @@ export default function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <TaxTools />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ✅ 2. REGISTERED NEW GOVERNMENT DEADLINES CMS ROUTE */}
+          <Route
+            path="/deadlines"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Deadlines />
                 </MainLayout>
               </ProtectedRoute>
             }

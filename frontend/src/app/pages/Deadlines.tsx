@@ -50,7 +50,8 @@ export function Deadlines() {
   const fetchDeadlines = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      const res   = await fetch(`${API_BASE_URL}/deadlines/admin`, {
+      // ✅ Added trailing slash to clear Vercel route drop on sub-paths
+      const res   = await fetch(`${API_BASE_URL}/deadlines/admin/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data  = await res.json();
@@ -92,9 +93,10 @@ export function Deadlines() {
     if (!form.title.trim() || !form.date) return;
     setSaving(true);
     try {
+      // ✅ Aligned both URLs to have complete matching trailing paths
       const url    = editTarget
-        ? `${API_BASE_URL}/deadlines/${editTarget.id}`
-        : `${API_BASE_URL}/deadlines`;
+        ? `${API_BASE_URL}/deadlines/${editTarget.id}/`
+        : `${API_BASE_URL}/deadlines/`;
       const method = editTarget ? "PUT" : "POST";
 
       const res  = await fetch(url, {
@@ -119,7 +121,8 @@ export function Deadlines() {
 
   const toggleActive = async (d: Deadline) => {
     try {
-      await fetch(`${API_BASE_URL}/deadlines/${d.id}`, {
+      // ✅ Added explicit trailing slash
+      await fetch(`${API_BASE_URL}/deadlines/${d.id}/`, {
         method  : "PUT",
         headers : { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
         body    : JSON.stringify({ is_active: !d.is_active }),
@@ -138,7 +141,8 @@ export function Deadlines() {
     if (!confirm("Permanently delete this deadline?")) return;
     setDeletingId(id);
     try {
-      await fetch(`${API_BASE_URL}/deadlines/${id}`, {
+      // ✅ Added explicit trailing slash
+      await fetch(`${API_BASE_URL}/deadlines/${id}/`, {
         method  : "DELETE",
         headers : { Authorization: `Bearer ${await token()}` },
       });

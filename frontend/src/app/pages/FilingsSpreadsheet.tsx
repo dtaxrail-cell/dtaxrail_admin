@@ -262,14 +262,16 @@ export function FilingsSpreadsheet() {
     ];
   }, [cellMatrixData, TARGET_COL_LEN, TARGET_ROW_LEN]);
 
-  // Handle cell edit events directly inside the FortuneSheet component grid
+  // Handle cell edit events directly inside the FortuneSheet component grid Safely
   const handleCellChange = (newData: any[]) => {
     const updatedGridMatrix = newData[0]?.data;
     if (!updatedGridMatrix) return;
 
-    // Loop through cells to look for any modifications compared to current state cache
+    // 1. SAFETY GATE: Loop through cells to verify if an actual text divergence exists
+    let hashDivergenceDetected = false;
+
     updatedGridMatrix.forEach((row: any[], rowIndex: number) => {
-      if (rowIndex === 0) return; // Ignore edits made to header cells labels row
+      if (rowIndex === 0 || hashDivergenceDetected) return; // Skip headers or if already found
 
       const mappingFiling = filteredFilings[rowIndex - 1];
       if (!mappingFiling) return;
@@ -278,7 +280,26 @@ export function FilingsSpreadsheet() {
         const oldVal = String(cellMatrixData[rowIndex]?.[colIndex]?.v ?? "");
         const newVal = String(cell?.v ?? "");
 
-        // If a cell's string content was altered by user, fire matching update endpoint
+        if (oldVal !== newVal) {
+          hashDivergenceDetected = true;
+        }
+      });
+    });
+
+    // If FortuneSheet is just matching our cached React state, stop here and do not hit backend APIs!
+    if (!hashDivergenceDetected) return;
+
+    // 2. RUN BACKEND SYNCHRONIZATION RUN ONLY IF USER EXPLICITLY MODIFIED TEXT
+    updatedGridMatrix.forEach((row: any[], rowIndex: number) => {
+      if (rowIndex === 0) return;
+
+      const mappingFiling = filteredFilings[rowIndex - 1];
+      if (!mappingFiling) return;
+
+      row.forEach((cell: any, colIndex: number) => {
+        const oldVal = String(cellMatrixData[rowIndex]?.[colIndex]?.v ?? "");
+        const newVal = String(cell?.v ?? "");
+
         if (oldVal !== newVal) {
           const totalFixedCount = FIXED_COLS.length;
 

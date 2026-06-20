@@ -50,28 +50,24 @@ export function FilingsSpreadsheet() {
   const [filings, setFilings] = useState<Filing[]>([]);
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataReady, setDataReady] = useState(false); // SAFETY GATE: Flags when spreadsheet matrix data structures are fully populated
   const [searchTerm, setSearchTerm] = useState("");
   const [newColLabel, setNewColLabel] = useState("");
   const [addingCol, setAddingCol] = useState(false);
 
   // ── fetch ──────────────────────────────────────────────────────────────────
 
-  // ── fetch ──────────────────────────────────────────────────────────────────
-
   const fetchData = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      
-      // FIX: URL query param alone busts the cache perfectly. Removed headers that caused the CORS preflight crash!
       const res = await fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, {
-        headers: { 
-          Authorization: `Bearer ${token}`
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {
         setFilings(data.filings ?? []);
         setCustomColumns(data.customColumns ?? []);
+        setDataReady(true); // Signal that raw variables are initialized in local state caches
       }
     } catch (e) {
       console.error(e);
@@ -215,12 +211,12 @@ export function FilingsSpreadsheet() {
   // ── transform data to fortunesheet cellular matrix format ──────────────────
 
   const cellMatrixData = useMemo(() => {
-    // Initialize a completely full allocated grid canvas matrix layout map with empty string cell structures
+    // 1. Initialize a completely full allocated grid canvas matrix layout map with empty string cell structures
     const matrix: any[][] = Array.from({ length: TARGET_ROW_LEN }, () =>
       Array.from({ length: TARGET_COL_LEN }, () => ({ v: "" }))
     );
 
-    // Lay down styled structural column header labels across Row Index [0]
+    // 2. Lay down styled structural column header labels across Row Index [0]
     FIXED_COLS.forEach((col, colIdx) => {
       matrix[0][colIdx] = { v: col.label, bl: 1, bg: "#f3f4f6", ht: 1, vt: 1 };
     });
@@ -230,7 +226,7 @@ export function FilingsSpreadsheet() {
       matrix[0][targetColIdx] = { v: col.label, bl: 1, bg: "#eff6ff", ht: 1, vt: 1 };
     });
 
-    // Inject actual system filing entries data items row by row starting down from Row Index [1]
+    // 3. Inject actual system filing entries data items row by row starting down from Row Index [1]
     filteredFilings.forEach((filing, rIdx) => {
       const rowIndex = rIdx + 1;
 
@@ -327,8 +323,8 @@ export function FilingsSpreadsheet() {
 
   // ── render ─────────────────────────────────────────────────────────────────
 
-  // FIX: Explicitly keep rendering the spinner screen until loading flag is false AND data is in memory
-  if (loading || filings.length === 0) {
+  // FIX: Force render loader until database array is fully processed in cellMatrixData layout schemas
+  if (loading || !dataReady) {
     return (
       <div className="flex items-center justify-center h-64 text-text-mid font-medium">
         Loading spreadsheet canvas grid...
@@ -413,6 +409,7 @@ export function FilingsSpreadsheet() {
 
       {/* ── INTERACTIVE CANVAS SPREADSHEET CONTAINER ── */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative" style={{ height: "550px" }}>
+        {/* FIX: Mount Workbook only if dataReady is true, preventing early layout crashes */}
         <Workbook
           data={sheetsConfig}
           onChange={handleCellChange}

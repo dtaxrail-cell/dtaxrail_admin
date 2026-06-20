@@ -59,8 +59,14 @@ export function FilingsSpreadsheet() {
   const fetchData = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch(`${API_BASE_URL}/filings`, {
-        headers: { Authorization: `Bearer ${token}` },
+      
+      // FIX: Added cache-busting headers and a dynamic timestamp parameter to bypass 304 caching completely
+      const res = await fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        },
       });
       const data = await res.json();
       if (data.success) {
@@ -209,12 +215,12 @@ export function FilingsSpreadsheet() {
   // ── transform data to fortunesheet cellular matrix format ──────────────────
 
   const cellMatrixData = useMemo(() => {
-    // 1. Initialize a completely full allocated grid canvas matrix layout map with empty string cell structures
+    // Initialize a completely full allocated grid canvas matrix layout map with empty string cell structures
     const matrix: any[][] = Array.from({ length: TARGET_ROW_LEN }, () =>
       Array.from({ length: TARGET_COL_LEN }, () => ({ v: "" }))
     );
 
-    // 2. Lay down styled structural column header labels across Row Index [0]
+    // Lay down styled structural column header labels across Row Index [0]
     FIXED_COLS.forEach((col, colIdx) => {
       matrix[0][colIdx] = { v: col.label, bl: 1, bg: "#f3f4f6", ht: 1, vt: 1 };
     });
@@ -224,7 +230,7 @@ export function FilingsSpreadsheet() {
       matrix[0][targetColIdx] = { v: col.label, bl: 1, bg: "#eff6ff", ht: 1, vt: 1 };
     });
 
-    // 3. Inject actual system filing entries data items row by row starting down from Row Index [1]
+    // Inject actual system filing entries data items row by row starting down from Row Index [1]
     filteredFilings.forEach((filing, rIdx) => {
       const rowIndex = rIdx + 1;
 
@@ -267,11 +273,10 @@ export function FilingsSpreadsheet() {
     const updatedGridMatrix = newData[0]?.data;
     if (!updatedGridMatrix) return;
 
-    // 1. SAFETY GATE: Loop through cells to verify if an actual text divergence exists
     let hashDivergenceDetected = false;
 
     updatedGridMatrix.forEach((row: any[], rowIndex: number) => {
-      if (rowIndex === 0 || hashDivergenceDetected) return; // Skip headers or if already found
+      if (rowIndex === 0 || hashDivergenceDetected) return;
 
       const mappingFiling = filteredFilings[rowIndex - 1];
       if (!mappingFiling) return;
@@ -286,10 +291,8 @@ export function FilingsSpreadsheet() {
       });
     });
 
-    // If FortuneSheet is just matching our cached React state, stop here and do not hit backend APIs!
     if (!hashDivergenceDetected) return;
 
-    // 2. RUN BACKEND SYNCHRONIZATION RUN ONLY IF USER EXPLICITLY MODIFIED TEXT
     updatedGridMatrix.forEach((row: any[], rowIndex: number) => {
       if (rowIndex === 0) return;
 
@@ -311,7 +314,6 @@ export function FilingsSpreadsheet() {
               updatePayment(mappingFiling.id, newVal);
             }
           } else {
-            // Find custom column key corresponding to this index
             const targetCustomIndex = colIndex - totalFixedCount;
             const customColKey = customColumns[targetCustomIndex]?.field_key;
             if (customColKey) {
@@ -325,7 +327,8 @@ export function FilingsSpreadsheet() {
 
   // ── render ─────────────────────────────────────────────────────────────────
 
-  if (loading) {
+  // FIX: Explicitly keep rendering the spinner screen until loading flag is false AND data is in memory
+  if (loading || filings.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-text-mid font-medium">
         Loading spreadsheet canvas grid...
@@ -410,23 +413,17 @@ export function FilingsSpreadsheet() {
 
       {/* ── INTERACTIVE CANVAS SPREADSHEET CONTAINER ── */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative" style={{ height: "550px" }}>
-        {filings.length > 0 ? (
-          <Workbook
-            data={sheetsConfig}
-            onChange={handleCellChange}
-            config={{
-              showinfobar: false, // Hides branding bar header
-              sheetFormulaBar: true, // Enables full formula calculation bar (=SUM, etc)
-              showsheetbar: false, // Disables tab navigation bar since we only need 1 master sheet
-              enableAddRow: true,
-              enableAddBackTop: false,
-            }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-400 text-sm font-medium">
-            No filings found matching your profile data layers.
-          </div>
-        )}
+        <Workbook
+          data={sheetsConfig}
+          onChange={handleCellChange}
+          config={{
+            showinfobar: false,
+            sheetFormulaBar: true,
+            showsheetbar: false,
+            enableAddRow: true,
+            enableAddBackTop: false,
+          }}
+        />
       </div>
 
       {/* ── FOOTER FOOTNOTE CAPTION LEGEND ── */}

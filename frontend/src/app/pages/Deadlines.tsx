@@ -6,25 +6,12 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Plus, Pencil, Trash2, Loader2, Calendar } from "lucide-react";
 
-type ColorTag = "pending" | "review" | "done";
-
 type Deadline = {
   id: string;
   title: string;
   date: string;
-  color_tag: ColorTag;
   is_active: boolean;
 };
-
-const COLOR_OPTIONS: { value: ColorTag; label: string; style: string }[] = [
-  { value: "pending", label: "🟠 Pending (Orange)", style: "bg-orange-100 text-orange-700 border-orange-200" },
-  { value: "review",  label: "🔵 Review (Blue)",   style: "bg-blue-100   text-blue-700   border-blue-200"   },
-  { value: "done",    label: "🟢 Done (Green)",    style: "bg-green-100  text-green-700  border-green-200"  },
-];
-
-const colorStyle = (tag: ColorTag) =>
-  COLOR_OPTIONS.find((c) => c.value === tag)?.style ??
-  "bg-gray-100 text-gray-700 border-gray-200";
 
 const fmt = (dateStr: string) => {
   if (!dateStr) return "";
@@ -33,28 +20,27 @@ const fmt = (dateStr: string) => {
   });
 };
 
-const EMPTY_FORM = { title: "", date: "", color_tag: "pending" as ColorTag };
+const EMPTY_FORM = { title: "", date: "" };
 
 export function Deadlines() {
 
-  const [deadlines,   setDeadlines  ] = useState<Deadline[]>([]);
-  const [loading,     setLoading    ] = useState(true);
-  const [saving,      setSaving     ] = useState(false);
-  const [deletingId,  setDeletingId ] = useState<string | null>(null);
-  const [showForm,    setShowForm   ] = useState(false);
-  const [editTarget,  setEditTarget ] = useState<Deadline | null>(null);
-  const [form,        setForm       ] = useState(EMPTY_FORM);
+  const [deadlines,  setDeadlines ] = useState<Deadline[]>([]);
+  const [loading,    setLoading   ] = useState(true);
+  const [saving,     setSaving    ] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showForm,   setShowForm  ] = useState(false);
+  const [editTarget, setEditTarget] = useState<Deadline | null>(null);
+  const [form,       setForm      ] = useState(EMPTY_FORM);
 
   // ── fetch ──────────────────────────────────────────────────────────────────
 
   const fetchDeadlines = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      // ✅ Clean URL — no trailing slash needed now that CORS is fixed server-side
       const res   = await fetch(`${API_BASE_URL}/deadlines/admin`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data  = await res.json();
+      const data = await res.json();
       if (data.success) setDeadlines(data.deadlines);
     } catch (e) {
       console.error(e);
@@ -77,7 +63,7 @@ export function Deadlines() {
 
   const openEdit = (d: Deadline) => {
     setEditTarget(d);
-    setForm({ title: d.title, date: d.date.slice(0, 10), color_tag: d.color_tag });
+    setForm({ title: d.title, date: d.date.slice(0, 10) });
     setShowForm(true);
   };
 
@@ -87,13 +73,12 @@ export function Deadlines() {
     setForm(EMPTY_FORM);
   };
 
-  // ── save (create or update) ────────────────────────────────────────────────
+  // ── save ───────────────────────────────────────────────────────────────────
 
   const save = async () => {
     if (!form.title.trim() || !form.date) return;
     setSaving(true);
     try {
-      // ✅ Clean URLs — consistent, no trailing slash
       const url    = editTarget
         ? `${API_BASE_URL}/deadlines/${editTarget.id}`
         : `${API_BASE_URL}/deadlines`;
@@ -190,10 +175,8 @@ export function Deadlines() {
             <div className="space-y-3">
 
               <div>
-                <label htmlFor="deadline-title" className="text-xs font-semibold text-text-mid mb-1 block">Title *</label>
+                <label className="text-xs font-semibold text-text-mid mb-1 block">Title *</label>
                 <Input
-                  id="deadline-title"
-                  name="title"
                   placeholder="e.g. ITR Filing Deadline"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -202,30 +185,13 @@ export function Deadlines() {
               </div>
 
               <div>
-                <label htmlFor="deadline-date" className="text-xs font-semibold text-text-mid mb-1 block">Date *</label>
+                <label className="text-xs font-semibold text-text-mid mb-1 block">Date *</label>
                 <Input
-                  id="deadline-date"
-                  name="date"
                   type="date"
                   value={form.date}
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
                   className="rounded-xl"
                 />
-              </div>
-
-              <div>
-                <label htmlFor="deadline-color" className="text-xs font-semibold text-text-mid mb-1 block">Colour Tag</label>
-                <select
-                  id="deadline-color"
-                  name="color_tag"
-                  value={form.color_tag}
-                  onChange={(e) => setForm({ ...form, color_tag: e.target.value as ColorTag })}
-                  className="w-full border rounded-xl px-3 py-2 text-sm outline-none focus:border-primary"
-                >
-                  {COLOR_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
               </div>
 
             </div>
@@ -243,7 +209,9 @@ export function Deadlines() {
                 disabled={saving || !form.title.trim() || !form.date}
                 className="flex-1 rounded-xl bg-gradient-to-r from-primary to-primary-dark"
               >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (editTarget ? "Update" : "Add")}
+                {saving
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : editTarget ? "Update" : "Add"}
               </Button>
             </div>
 
@@ -251,7 +219,7 @@ export function Deadlines() {
         </div>
       )}
 
-      {/* TABLE */}
+      {/* LIST */}
       <Card className="rounded-2xl border-0 shadow-sm">
         <CardHeader>
           <CardTitle>All Deadlines ({deadlines.length})</CardTitle>
@@ -270,9 +238,10 @@ export function Deadlines() {
                     d.is_active ? "bg-white" : "bg-gray-50 opacity-60"
                   }`}
                 >
+
                   {/* Icon */}
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${colorStyle(d.color_tag)}`}>
-                    <Calendar className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-50 border border-blue-100">
+                    <Calendar className="w-5 h-5 text-primary" />
                   </div>
 
                   {/* Info */}
@@ -280,11 +249,6 @@ export function Deadlines() {
                     <p className="font-semibold text-text-dark text-sm">{d.title}</p>
                     <p className="text-xs text-text-mid mt-0.5">{fmt(d.date)}</p>
                   </div>
-
-                  {/* Tag */}
-                  <span className={`text-xs font-semibold border rounded-full px-3 py-1 ${colorStyle(d.color_tag)}`}>
-                    {d.color_tag.charAt(0).toUpperCase() + d.color_tag.slice(1)}
-                  </span>
 
                   {/* Active toggle */}
                   <button

@@ -25,6 +25,8 @@ import {
 
 } from "../controllers/filingController.js";
 
+import { deleteDocument } from "../controllers/documentController.js";
+
 const router = express.Router();
 
 
@@ -163,40 +165,19 @@ router.post(
 );
 
 
+
 // ==========================================
-// ADMIN — DELETE INDIVIDUAL DOCUMENT
+// ADMIN — DELETE A DOCUMENT
+// ⚠️ Must be before /:filingId
 // ==========================================
 router.delete(
-  "/delete-document/:documentId", // 💡 Note the explicitly clean subpath to avoid catch-all clashes
+  "/delete-document/:documentId",
   authMiddleware,
   adminMiddleware,
-  async (req, res) => {
-    try {
-      const { documentId } = req.params;
-
-      // 1. Verify document presence before running structural dropping routine
-      const checkDoc = await getPool().query(
-        "SELECT * FROM documents WHERE id = $1",
-        [documentId]
-      );
-
-      if (checkDoc.rows.length === 0) {
-        return res.status(404).json({ success: false, message: "Document not found." });
-      }
-
-      // 2. Perform table ledger row removal
-      await getPool().query(
-        "DELETE FROM documents WHERE id = $1",
-        [documentId]
-      );
-
-      return res.json({ success: true, message: "Document removed successfully." });
-    } catch (error) {
-      console.error(error);
-      return res.status(500).json({ success: false, error: error.message });
-    }
-  }
+  deleteDocument
 );
+
+
 
 // ==========================================
 // ADMIN — GET SINGLE FILING WORKSPACE

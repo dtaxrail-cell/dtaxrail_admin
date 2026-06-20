@@ -1,4 +1,5 @@
 import { getPool } from "../config/db.js";
+import { v2 as cloudinary } from "cloudinary";
 
 
 
@@ -71,15 +72,6 @@ async (req, res) => {
 
 
 
-
-
-
-
-
-
-// ==========================================
-// GET ALL MEMBER FILINGS OF CUSTOMER
-// ==========================================
 // ==========================================
 // GET ALL MEMBER FILINGS OF CUSTOMER
 // ==========================================
@@ -151,11 +143,6 @@ async (req, res) => {
 
 
 
-
-
-
-
-
 // ==========================================
 // GET DOCUMENTS OF SINGLE FILING
 // ==========================================
@@ -166,77 +153,29 @@ async (req, res) => {
 
     const { filingId } = req.params;
 
-
-
-
-
-    // GET FILING
     const filingResult =
     await getPool().query(
-
-      `
-      SELECT *
-
-      FROM filings
-
-      WHERE id = $1
-      `,
-
+      `SELECT * FROM filings WHERE id = $1`,
       [filingId]
     );
 
-
-
-
-
-    if (
-      filingResult.rows.length === 0
-    ) {
-
+    if (filingResult.rows.length === 0) {
       return res.status(404).json({
-
         success: false,
         message: "Filing not found",
-
       });
     }
 
-
-
-
-
-
-    // GET DOCUMENTS
     const documentsResult =
     await getPool().query(
-
-      `
-      SELECT *
-
-      FROM documents
-
-      WHERE filing_id = $1
-
-      ORDER BY created_at DESC
-      `,
-
+      `SELECT * FROM documents WHERE filing_id = $1 ORDER BY created_at DESC`,
       [filingId]
     );
 
-
-
-
-
     return res.json({
-
-      success: true,
-
-      filing:
-      filingResult.rows[0],
-
-      documents:
-      documentsResult.rows,
-
+      success   : true,
+      filing    : filingResult.rows[0],
+      documents : documentsResult.rows,
     });
 
   } catch (error) {
@@ -244,10 +183,82 @@ async (req, res) => {
     console.log(error);
 
     return res.status(500).json({
-
       success: false,
       error: error.message,
+    });
+  }
+};
 
+
+
+// ==========================================
+// DELETE DOCUMENT
+// ==========================================
+export const deleteDocument =
+async (req, res) => {
+
+  try {
+
+    const { documentId } = req.params;
+
+    // 1. Fetch the document row so we can get the Cloudinary URL
+    const docResult =
+    await getPool().query(
+      `SELECT * FROM documents WHERE id = $1`,
+      [documentId]
+    );
+
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const doc = docResult.rows[0];
+
+    // 2. Delete from Cloudinary if a file_url exists
+    if (doc.file_url) {
+      try {
+        // Extract the public_id from the Cloudinary URL
+        // URL format: https://res.cloudinary.com/<cloud>/image/upload/v123456/folder/public_id.ext
+        const urlParts   = doc.file_url.split("/");
+        const uploadIndex = urlParts.indexOf("upload");
+
+        if (uploadIndex !== -1) {
+          // Everything after "upload/v<version>/" is the public_id (with extension)
+          const afterUpload  = urlParts.slice(uploadIndex + 2).join("/");
+          const publicId     = afterUpload.replace(/\.[^/.]+$/, ""); // strip extension
+
+          await cloudinary.uploader.destroy(publicId, {
+            resource_type: "auto",
+            invalidate   : true,
+          });
+        }
+      } catch (cloudinaryError) {
+        // Log but don't fail — still delete from DB
+        console.log("Cloudinary delete warning:", cloudinaryError.message);
+      }
+    }
+
+    // 3. Delete from database
+    await getPool().query(
+      `DELETE FROM documents WHERE id = $1`,
+      [documentId]
+    );
+
+    return res.json({
+      success: true,
+      message: "Document deleted successfully",
+    });
+
+  } catch (error) {
+
+    console.log("DELETE DOCUMENT ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      error  : error.message,
     });
   }
 };

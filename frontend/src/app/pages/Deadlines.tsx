@@ -50,8 +50,8 @@ export function Deadlines() {
   const fetchDeadlines = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      // ✅ Added trailing slash to clear Vercel route drop on sub-paths
-      const res   = await fetch(`${API_BASE_URL}/deadlines/admin/`, {
+      // ✅ Clean URL — no trailing slash needed now that CORS is fixed server-side
+      const res   = await fetch(`${API_BASE_URL}/deadlines/admin`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data  = await res.json();
@@ -93,10 +93,10 @@ export function Deadlines() {
     if (!form.title.trim() || !form.date) return;
     setSaving(true);
     try {
-      // ✅ Aligned both URLs to have complete matching trailing paths
+      // ✅ Clean URLs — consistent, no trailing slash
       const url    = editTarget
-        ? `${API_BASE_URL}/deadlines/${editTarget.id}/`
-        : `${API_BASE_URL}/deadlines/`;
+        ? `${API_BASE_URL}/deadlines/${editTarget.id}`
+        : `${API_BASE_URL}/deadlines`;
       const method = editTarget ? "PUT" : "POST";
 
       const res  = await fetch(url, {
@@ -121,8 +121,7 @@ export function Deadlines() {
 
   const toggleActive = async (d: Deadline) => {
     try {
-      // ✅ Added explicit trailing slash
-      await fetch(`${API_BASE_URL}/deadlines/${d.id}/`, {
+      await fetch(`${API_BASE_URL}/deadlines/${d.id}`, {
         method  : "PUT",
         headers : { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
         body    : JSON.stringify({ is_active: !d.is_active }),
@@ -141,8 +140,7 @@ export function Deadlines() {
     if (!confirm("Permanently delete this deadline?")) return;
     setDeletingId(id);
     try {
-      // ✅ Added explicit trailing slash
-      await fetch(`${API_BASE_URL}/deadlines/${id}/`, {
+      await fetch(`${API_BASE_URL}/deadlines/${id}`, {
         method  : "DELETE",
         headers : { Authorization: `Bearer ${await token()}` },
       });
@@ -192,8 +190,10 @@ export function Deadlines() {
             <div className="space-y-3">
 
               <div>
-                <label className="text-xs font-semibold text-text-mid mb-1 block">Title *</label>
+                <label htmlFor="deadline-title" className="text-xs font-semibold text-text-mid mb-1 block">Title *</label>
                 <Input
+                  id="deadline-title"
+                  name="title"
                   placeholder="e.g. ITR Filing Deadline"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -202,8 +202,10 @@ export function Deadlines() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-text-mid mb-1 block">Date *</label>
+                <label htmlFor="deadline-date" className="text-xs font-semibold text-text-mid mb-1 block">Date *</label>
                 <Input
+                  id="deadline-date"
+                  name="date"
                   type="date"
                   value={form.date}
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
@@ -212,8 +214,10 @@ export function Deadlines() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-text-mid mb-1 block">Colour Tag</label>
+                <label htmlFor="deadline-color" className="text-xs font-semibold text-text-mid mb-1 block">Colour Tag</label>
                 <select
+                  id="deadline-color"
+                  name="color_tag"
                   value={form.color_tag}
                   onChange={(e) => setForm({ ...form, color_tag: e.target.value as ColorTag })}
                   className="w-full border rounded-xl px-3 py-2 text-sm outline-none focus:border-primary"

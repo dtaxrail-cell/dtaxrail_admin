@@ -56,16 +56,16 @@ export function FilingsSpreadsheet() {
 
   // ── fetch ──────────────────────────────────────────────────────────────────
 
+  // ── fetch ──────────────────────────────────────────────────────────────────
+
   const fetchData = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
       
-      // FIX: Added cache-busting headers and a dynamic timestamp parameter to bypass 304 caching completely
+      // FIX: URL query param alone busts the cache perfectly. Removed headers that caused the CORS preflight crash!
       const res = await fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, {
         headers: { 
-          Authorization: `Bearer ${token}`,
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache"
+          Authorization: `Bearer ${token}`
         },
       });
       const data = await res.json();

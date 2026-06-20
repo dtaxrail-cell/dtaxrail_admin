@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { auth } from "../../lib/firebase";
 import { API_BASE_URL } from "../../config/api";
 import { Download, Plus } from "lucide-react";
-// Import the core FortuneSheet Canvas Workbook
 import { Workbook } from "@fortune-sheet/react";
 import "@fortune-sheet/react/dist/index.css";
 
@@ -31,8 +30,6 @@ type CustomColumn = {
   position: number;
 };
 
-// ─── fixed columns (always present, in order) ─────────────────────────────────
-
 const FIXED_COLS = [
   { key: "member_name",     label: "Full Name"  },
   { key: "member_pan",      label: "PAN"        },
@@ -45,21 +42,21 @@ const FIXED_COLS = [
 ] as const;
 
 // ─── helper: build a single celldata entry ────────────────────────────────────
+// Matches the official FortuneSheet format EXACTLY:
+// { r, c, v: { v, m, ct: { fa, t } } }
 
-function cell(r: number, c: number, v: string, opts: Record<string, any> = {}) {
+function cell(r: number, c: number, value: string, extra: Record<string, any> = {}) {
   return {
     r,
     c,
     v: {
-      v,
-      m: v,
+      v: value,
+      m: value,
       ct: { fa: "General", t: "g" },
-      ...opts,
+      ...extra,
     },
   };
 }
-
-// ─── main component ──────────────────────────────────────────────────────────
 
 export function FilingsSpreadsheet() {
   const [filings, setFilings] = useState<Filing[]>([]);
@@ -67,11 +64,7 @@ export function FilingsSpreadsheet() {
   const [loading, setLoading] = useState(true);
   const [newColLabel, setNewColLabel] = useState("");
   const [addingCol, setAddingCol] = useState(false);
-
-  // CONTROLLED WORKBOOK STATE
   const [sheetData, setSheetData] = useState<any[] | null>(null);
-
-  // ── fetch and format data ──────────────────────────────────────────────────
 
   const fetchData = async () => {
     try {
@@ -88,13 +81,8 @@ export function FilingsSpreadsheet() {
         setFilings(fetchedFilings);
         setCustomColumns(fetchedCustomCols);
 
-        const totalCols = FIXED_COLS.length + fetchedCustomCols.length;
-        const totalRows = Math.max(fetchedFilings.length + 20, 40);
+        const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
 
-        // ✅ CORRECT FORMAT: celldata is a flat array of {r, c, v} entries,
-        // not a raw 2D matrix. This is what FortuneSheet actually reads —
-        // a 2D `data` matrix on initial load is silently ignored, which is
-        // why the grid was rendering empty before.
         const celldata: any[] = [];
 
         // Header row (row 0)
@@ -102,11 +90,10 @@ export function FilingsSpreadsheet() {
           celldata.push(cell(0, colIdx, col.label, { bl: 1, bg: "#f3f4f6" }));
         });
         fetchedCustomCols.forEach((col, colIdx) => {
-          const targetCol = FIXED_COLS.length + colIdx;
-          celldata.push(cell(0, targetCol, col.label, { bl: 1, bg: "#eff6ff" }));
+          celldata.push(cell(0, FIXED_COLS.length + colIdx, col.label, { bl: 1, bg: "#eff6ff" }));
         });
 
-        // Data rows (row 1 onward)
+        // Data rows (row 1+)
         fetchedFilings.forEach((filing, rIdx) => {
           const r = rIdx + 1;
           celldata.push(cell(r, 0, filing.member_name ?? ""));
@@ -115,34 +102,51 @@ export function FilingsSpreadsheet() {
           celldata.push(cell(r, 3, filing.member_phone ?? ""));
           celldata.push(cell(r, 4, filing.member_email ?? ""));
           celldata.push(
-            cell(
-              r,
-              5,
-              filing.member_dob
-                ? new Date(filing.member_dob).toLocaleDateString("en-IN")
-                : ""
-            )
+            cell(r, 5, filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "")
           );
           celldata.push(cell(r, 6, filing.status ?? ""));
           celldata.push(cell(r, 7, filing.payment_status ?? ""));
 
           fetchedCustomCols.forEach((col, cIdx) => {
-            const targetCol = FIXED_COLS.length + cIdx;
             const val = filing.custom_fields?.[col.field_key] ?? "";
-            celldata.push(cell(r, targetCol, val));
+            celldata.push(cell(r, FIXED_COLS.length + cIdx, val));
           });
         });
+
+        // ✅ Debug aid — verify the actual payload shape in the browser console
+        console.log("FortuneSheet celldata sample:", celldata.slice(0, 10));
+        console.log("FortuneSheet celldata total entries:", celldata.length);
 
         setSheetData([
           {
             name: "Filings Matrix",
             id: "sheet-1",
+            color: "",
             status: 1,
             order: 0,
+            hide: 0,
+            row: Math.max(fetchedFilings.length + 20, 40),
+            column: Math.max(totalDataCols + 4, 18),
             celldata,
-            row: totalRows,
-            column: Math.max(totalCols + 4, 10), // ✅ correct prop name: column, not columnlen
             config: {},
+            scrollLeft: 0,
+            scrollTop: 0,
+            luckysheet_select_save: [],
+            calcChain: [],
+            isPivotTable: false,
+            pivotTable: {},
+            filter_select: {},
+            filter: null,
+            luckysheet_conditionformat_save: [],
+            luckysheet_alternateformat_save: [],
+            dataVerification: {},
+            hyperlink: {},
+            luckysheet_freezen: {},
+            zoomRatio: 1,
+            image: [],
+            showGridLines: 1,
+            defaultRowHeight: 19,
+            defaultColWidth: 73,
           },
         ]);
       }
@@ -157,11 +161,7 @@ export function FilingsSpreadsheet() {
     fetchData();
   }, []);
 
-  // ── token helper ───────────────────────────────────────────────────────────
-
   const token = async () => (await auth.currentUser?.getIdToken()) ?? "";
-
-  // ── update functions wired directly to spreadsheet changes ──────────────────
 
   const updateStatus = async (filingId: string, status: string) => {
     try {
@@ -199,8 +199,6 @@ export function FilingsSpreadsheet() {
     }
   };
 
-  // ── add custom column ──────────────────────────────────────────────────────
-
   const addColumn = async () => {
     if (!newColLabel.trim()) return;
     try {
@@ -213,21 +211,16 @@ export function FilingsSpreadsheet() {
       if (data.success) {
         setNewColLabel("");
         setAddingCol(false);
-        fetchData(); // Reload and let the workbook fully remount safely
+        fetchData();
       }
     } catch (e) {
       console.error(e);
     }
   };
 
-  // ── excel export ───────────────────────────────────────────────────────────
-
   const exportExcel = async () => {
     const XLSX = await import("xlsx");
-    const headers = [
-      ...FIXED_COLS.map((c) => c.label),
-      ...customColumns.map((c) => c.label),
-    ];
+    const headers = [...FIXED_COLS.map((c) => c.label), ...customColumns.map((c) => c.label)];
 
     const rows = filings.map((f) => [
       f.member_name ?? "",
@@ -245,29 +238,22 @@ export function FilingsSpreadsheet() {
     ws["!cols"] = headers.map((h, colIdx) => ({
       wch: Math.min(Math.max(h.length, ...rows.map((r) => String(r[colIdx] ?? "").length)) + 2, 40),
     }));
-
     ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Filings");
     XLSX.writeFile(wb, `DTaxRail_Filings_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  // ── handle cell edit events ──────────────────────────────────────────────────
-  // FortuneSheet's onChange gives back the FULL updated sheet array (same
-  // shape we passed in via `data`), with `data` now populated internally as
-  // a 2D matrix snapshot for convenience. We diff against our last known
-  // celldata-derived values stored in `filings`/`customColumns` state.
-
   const handleCellChange = (newData: any[]) => {
     if (!sheetData) return;
-    const updatedMatrix = newData[0]?.data; // FortuneSheet outputs `data` (2D) on change, even though input used `celldata`
+    const updatedMatrix = newData[0]?.data;
     if (!updatedMatrix) {
       setSheetData(newData);
       return;
     }
 
     updatedMatrix.forEach((row: any[], rowIndex: number) => {
-      if (rowIndex === 0 || !row) return; // skip header
+      if (rowIndex === 0 || !row) return;
       const mappingFiling = filings[rowIndex - 1];
       if (!mappingFiling) return;
 
@@ -275,39 +261,25 @@ export function FilingsSpreadsheet() {
         const newVal = String(cellObj?.v ?? cellObj?.m ?? "");
         const totalFixedCount = FIXED_COLS.length;
 
-        let oldVal = "";
-        if (colIndex < totalFixedCount) {
-          const fieldKey = FIXED_COLS[colIndex].key as keyof Filing;
-          oldVal = String((mappingFiling as any)[fieldKey] ?? "");
-        } else {
-          const customIdx = colIndex - totalFixedCount;
-          const customKey = customColumns[customIdx]?.field_key;
-          oldVal = customKey ? String(mappingFiling.custom_fields?.[customKey] ?? "") : "__skip__";
-        }
-
-        if (oldVal === "__skip__" || oldVal === newVal) return;
-
         if (colIndex < totalFixedCount) {
           const fieldKey = FIXED_COLS[colIndex].key;
-          if (fieldKey === "status") {
-            updateStatus(mappingFiling.id, newVal);
-          } else if (fieldKey === "payment_status") {
-            updatePayment(mappingFiling.id, newVal);
-          }
-          // member_name/pan/password/phone/email/dob are read-only display
-          // columns sourced from member creation — intentionally not synced
+          const oldVal = String((mappingFiling as any)[fieldKey] ?? "");
+          if (oldVal === newVal) return;
+          if (fieldKey === "status") updateStatus(mappingFiling.id, newVal);
+          else if (fieldKey === "payment_status") updatePayment(mappingFiling.id, newVal);
         } else {
           const customIdx = colIndex - totalFixedCount;
           const customKey = customColumns[customIdx]?.field_key;
-          if (customKey) updateCustomField(mappingFiling.id, customKey, newVal);
+          if (!customKey) return;
+          const oldVal = String(mappingFiling.custom_fields?.[customKey] ?? "");
+          if (oldVal === newVal) return;
+          updateCustomField(mappingFiling.id, customKey, newVal);
         }
       });
     });
 
     setSheetData(newData);
   };
-
-  // ── render ─────────────────────────────────────────────────────────────────
 
   if (loading || !sheetData) {
     return (
@@ -319,7 +291,6 @@ export function FilingsSpreadsheet() {
 
   return (
     <div className="space-y-4">
-      {/* ── HEADER ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-text-dark">Filings</h1>
@@ -329,7 +300,6 @@ export function FilingsSpreadsheet() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* add column */}
           {addingCol ? (
             <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-blue-400 shadow-sm">
               <input
@@ -343,17 +313,11 @@ export function FilingsSpreadsheet() {
                 }}
                 className="px-3 py-1 text-sm outline-none w-36"
               />
-              <button
-                onClick={addColumn}
-                className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-              >
+              <button onClick={addColumn} className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
                 Add
               </button>
               <button
-                onClick={() => {
-                  setAddingCol(false);
-                  setNewColLabel("");
-                }}
+                onClick={() => { setAddingCol(false); setNewColLabel(""); }}
                 className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
               >
                 Cancel
@@ -369,7 +333,6 @@ export function FilingsSpreadsheet() {
             </button>
           )}
 
-          {/* export excel */}
           <button
             onClick={exportExcel}
             className="flex items-center gap-1.5 px-3 py-2 text-sm bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors shadow-sm font-medium"
@@ -380,10 +343,8 @@ export function FilingsSpreadsheet() {
         </div>
       </div>
 
-      {/* ── INTERACTIVE CANVAS SPREADSHEET CONTAINER ── */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative" style={{ height: "550px" }}>
         <Workbook
-          key={sheetData[0]?.celldata?.length ?? 0} // remount cleanly after column add/reload
           data={sheetData}
           onChange={handleCellChange}
           config={{
@@ -396,7 +357,6 @@ export function FilingsSpreadsheet() {
         />
       </div>
 
-      {/* ── FOOTER FOOTNOTE CAPTION LEGEND ── */}
       <p className="text-xs text-gray-400 text-right italic font-medium">
         Status & Payment updates sync with customers. Type custom equations directly inside cell boxes to execute evaluations.
       </p>

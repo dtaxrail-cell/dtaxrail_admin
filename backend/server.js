@@ -31,6 +31,13 @@ const app = express();
 // handle preflight entirely; double-handling was likely conflicting with it.
 // ──────────────────────────────────────────────────────────────────────────
 
+// ✅ Express 5 fix: bare "*" wildcard routes (app.options("*", ...)) throw a
+// path-to-regexp error at startup in Express 5, crashing the serverless
+// function before any response (incl. CORS headers) can be sent — that's
+// why the browser reported "no Access-Control-Allow-Origin header" even
+// though cors() was configured. A single app.use(cors(...)) is sufficient;
+// the cors package itself responds to OPTIONS preflight automatically for
+// every route, no wildcard route registration needed.
 app.use(
   cors({
     origin: true,        // reflects the actual request Origin header (valid w/ credentials)
@@ -39,14 +46,6 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-
-// Explicitly handle preflight for ALL routes using the same cors() instance
-app.options("*", cors({
-  origin: true,
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-}));
 
 app.use(express.json());
 

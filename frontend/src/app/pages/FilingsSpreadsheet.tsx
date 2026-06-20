@@ -50,7 +50,6 @@ export function FilingsSpreadsheet() {
   const [filings, setFilings] = useState<Filing[]>([]);
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dataReady, setDataReady] = useState(false); // SAFETY GATE: Flags when spreadsheet matrix data structures are fully populated
   const [searchTerm, setSearchTerm] = useState("");
   const [newColLabel, setNewColLabel] = useState("");
   const [addingCol, setAddingCol] = useState(false);
@@ -60,6 +59,7 @@ export function FilingsSpreadsheet() {
   const fetchData = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
+      // Cache-busting parameter prevents 304 Not Modified loops from browser cache
       const res = await fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -67,7 +67,6 @@ export function FilingsSpreadsheet() {
       if (data.success) {
         setFilings(data.filings ?? []);
         setCustomColumns(data.customColumns ?? []);
-        setDataReady(true); // Signal that raw variables are initialized in local state caches
       }
     } catch (e) {
       console.error(e);
@@ -203,30 +202,31 @@ export function FilingsSpreadsheet() {
     );
   }, [filings, searchTerm]);
 
-  // ── dynamic grid geometry metrics calculations ──────────────────────────────
+  // ── dynamic matrix boundaries ──────────────────────────────────────────────
 
-  const TARGET_ROW_LEN = useMemo(() => Math.max(filteredFilings.length + 15, 30), [filteredFilings.length]);
-  const TARGET_COL_LEN = useMemo(() => FIXED_COLS.length + customColumns.length + 2, [customColumns.length]);
+  const TARGET_ROW_LEN = useMemo(() => Math.max(filteredFilings.length + 20, 40), [filteredFilings.length]);
+  const TARGET_COL_LEN = useMemo(() => FIXED_COLS.length + customColumns.length + 4, [customColumns.length]);
 
   // ── transform data to fortunesheet cellular matrix format ──────────────────
 
   const cellMatrixData = useMemo(() => {
-    // 1. Initialize a completely full allocated grid canvas matrix layout map with empty string cell structures
+    // Build a perfectly allocated 2D array coordinates mapping
     const matrix: any[][] = Array.from({ length: TARGET_ROW_LEN }, () =>
       Array.from({ length: TARGET_COL_LEN }, () => ({ v: "" }))
     );
 
-    // 2. Lay down styled structural column header labels across Row Index [0]
+    // Set fixed column headers
     FIXED_COLS.forEach((col, colIdx) => {
       matrix[0][colIdx] = { v: col.label, bl: 1, bg: "#f3f4f6", ht: 1, vt: 1 };
     });
 
+    // Set custom column headers
     customColumns.forEach((col, colIdx) => {
       const targetColIdx = FIXED_COLS.length + colIdx;
       matrix[0][targetColIdx] = { v: col.label, bl: 1, bg: "#eff6ff", ht: 1, vt: 1 };
     });
 
-    // 3. Inject actual system filing entries data items row by row starting down from Row Index [1]
+    // Inject system row records
     filteredFilings.forEach((filing, rIdx) => {
       const rowIndex = rIdx + 1;
 
@@ -239,7 +239,6 @@ export function FilingsSpreadsheet() {
       matrix[rowIndex][6] = { v: filing.status ?? "" };
       matrix[rowIndex][7] = { v: filing.payment_status ?? "" };
 
-      // Map dynamic custom extended attributes onto matching trailing cell offsets
       customColumns.forEach((col, cIdx) => {
         const targetColIdx = FIXED_COLS.length + cIdx;
         const cellValue = filing.custom_fields?.[col.field_key] ?? "";
@@ -250,7 +249,6 @@ export function FilingsSpreadsheet() {
     return matrix;
   }, [filteredFilings, customColumns, TARGET_ROW_LEN, TARGET_COL_LEN]);
 
-  // FortuneSheet component data payload structural bundle config object array
   const sheetsConfig = useMemo(() => {
     return [
       {
@@ -264,7 +262,7 @@ export function FilingsSpreadsheet() {
     ];
   }, [cellMatrixData, TARGET_COL_LEN, TARGET_ROW_LEN]);
 
-  // Handle cell edit events directly inside the FortuneSheet component grid Safely
+  // Handle cell updates inside spreadsheet canvas
   const handleCellChange = (newData: any[]) => {
     const updatedGridMatrix = newData[0]?.data;
     if (!updatedGridMatrix) return;
@@ -280,7 +278,6 @@ export function FilingsSpreadsheet() {
       row.forEach((cell: any, colIndex: number) => {
         const oldVal = String(cellMatrixData[rowIndex]?.[colIndex]?.v ?? "");
         const newVal = String(cell?.v ?? "");
-
         if (oldVal !== newVal) {
           hashDivergenceDetected = true;
         }
@@ -323,8 +320,7 @@ export function FilingsSpreadsheet() {
 
   // ── render ─────────────────────────────────────────────────────────────────
 
-  // FIX: Force render loader until database array is fully processed in cellMatrixData layout schemas
-  if (loading || !dataReady) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-text-mid font-medium">
         Loading spreadsheet canvas grid...
@@ -409,18 +405,24 @@ export function FilingsSpreadsheet() {
 
       {/* ── INTERACTIVE CANVAS SPREADSHEET CONTAINER ── */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative" style={{ height: "550px" }}>
-        {/* FIX: Mount Workbook only if dataReady is true, preventing early layout crashes */}
-        <Workbook
-          data={sheetsConfig}
-          onChange={handleCellChange}
-          config={{
-            showinfobar: false,
-            sheetFormulaBar: true,
-            showsheetbar: false,
-            enableAddRow: true,
-            enableAddBackTop: false,
-          }}
-        />
+        {filings.length > 0 ? (
+          <Workbook
+            key={filings.length} // Force-remounts the spreadsheet when database arrays are loaded
+            data={sheetsConfig}
+            onChange={handleCellChange}
+            config={{
+              showinfobar: false,
+              sheetFormulaBar: true,
+              showsheetbar: false,
+              enableAddRow: true,
+              enableAddBackTop: false,
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-400 text-sm font-medium">
+            No filings found matching your profile data layers.
+          </div>
+        )}
       </div>
 
       {/* ── FOOTER FOOTNOTE CAPTION LEGEND ── */}

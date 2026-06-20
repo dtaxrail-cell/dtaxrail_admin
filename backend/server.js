@@ -23,35 +23,30 @@ import deadlineRoutes from "./routes/deadlineRoutes.js";
 const app = express();
 
 // ──────────────────────────────────────────────────────────────────────────
-// ✅ CORS — explicit config + manual safety-net headers.
-// Bare cors() can have its preflight (OPTIONS) response stripped by Vercel's
-// serverless layer in some routing configs. We set headers explicitly on
-// every response AND short-circuit OPTIONS requests immediately so the
-// preflight always succeeds regardless of how Vercel proxies the request.
+// ✅ CORS — using the `cors` package ONLY, correctly configured.
+// Key fix: explicit allow-list (or origin:true reflects the request origin
+// automatically and correctly) — NEVER mix "*" with credentials:true, that
+// combination is what Chrome was flagging as "invalid CORS header values".
+// No manual header-setting middleware — let the well-tested `cors` package
+// handle preflight entirely; double-handling was likely conflicting with it.
 // ──────────────────────────────────────────────────────────────────────────
 
-const corsOptions = {
-  origin: true,           // reflect request origin (or replace with explicit allow-list, see note below)
+app.use(
+  cors({
+    origin: true,        // reflects the actual request Origin header (valid w/ credentials)
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// Explicitly handle preflight for ALL routes using the same cors() instance
+app.options("*", cors({
+  origin: true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
-};
-
-app.use(cors(corsOptions));
-
-// Manual safety net — guarantees headers exist even if upstream proxy drops them
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,PATCH");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  // Respond immediately to preflight — don't let it fall through to routes
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-  next();
-});
+}));
 
 app.use(express.json());
 

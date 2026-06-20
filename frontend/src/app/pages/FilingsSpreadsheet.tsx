@@ -201,47 +201,52 @@ export function FilingsSpreadsheet() {
     );
   }, [filings, searchTerm]);
 
+  // ── dynamic grid geometry metrics calculations ──────────────────────────────
+
+  const TARGET_ROW_LEN = useMemo(() => Math.max(filteredFilings.length + 15, 30), [filteredFilings.length]);
+  const TARGET_COL_LEN = useMemo(() => FIXED_COLS.length + customColumns.length + 2, [customColumns.length]);
+
   // ── transform data to fortunesheet cellular matrix format ──────────────────
 
   const cellMatrixData = useMemo(() => {
-    const headerRow: any[] = [];
+    // 1. Initialize a completely full allocated grid canvas matrix layout map with empty string cell structures
+    const matrix: any[][] = Array.from({ length: TARGET_ROW_LEN }, () =>
+      Array.from({ length: TARGET_COL_LEN }, () => ({ v: "" }))
+    );
 
-    // Create styled header cells for fixed columns
-    FIXED_COLS.forEach((col) => {
-      headerRow.push({ v: col.label, bl: 1, bg: "#f3f4f6", ht: 1, vt: 1 });
+    // 2. Lay down styled structural column header labels across Row Index [0]
+    FIXED_COLS.forEach((col, colIdx) => {
+      matrix[0][colIdx] = { v: col.label, bl: 1, bg: "#f3f4f6", ht: 1, vt: 1 };
     });
 
-    // Create styled header cells for dynamic custom columns
-    customColumns.forEach((col) => {
-      headerRow.push({ v: col.label, bl: 1, bg: "#eff6ff", ht: 1, vt: 1 });
+    customColumns.forEach((col, colIdx) => {
+      const targetColIdx = FIXED_COLS.length + colIdx;
+      matrix[0][targetColIdx] = { v: col.label, bl: 1, bg: "#eff6ff", ht: 1, vt: 1 };
     });
 
-    const matrix: any[][] = [headerRow];
+    // 3. Inject actual system filing entries data items row by row starting down from Row Index [1]
+    filteredFilings.forEach((filing, rIdx) => {
+      const rowIndex = rIdx + 1;
 
-    // Build row blocks for every single filing record matching search metric filters
-    filteredFilings.forEach((filing) => {
-      const rowCells: any[] = [
-        { v: filing.member_name ?? "" },
-        { v: filing.member_pan ?? "" },
-        { v: filing.member_password ?? "" },
-        { v: filing.member_phone ?? "" },
-        { v: filing.member_email ?? "" },
-        { v: filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "" },
-        { v: filing.status ?? "" },
-        { v: filing.payment_status ?? "" },
-      ];
+      matrix[rowIndex][0] = { v: filing.member_name ?? "" };
+      matrix[rowIndex][1] = { v: filing.member_pan ?? "" };
+      matrix[rowIndex][2] = { v: filing.member_password ?? "" };
+      matrix[rowIndex][3] = { v: filing.member_phone ?? "" };
+      matrix[rowIndex][4] = { v: filing.member_email ?? "" };
+      matrix[rowIndex][5] = { v: filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "" };
+      matrix[rowIndex][6] = { v: filing.status ?? "" };
+      matrix[rowIndex][7] = { v: filing.payment_status ?? "" };
 
-      // Add values for custom dynamic field columns
-      customColumns.forEach((col) => {
+      // Map dynamic custom extended attributes onto matching trailing cell offsets
+      customColumns.forEach((col, cIdx) => {
+        const targetColIdx = FIXED_COLS.length + cIdx;
         const cellValue = filing.custom_fields?.[col.field_key] ?? "";
-        rowCells.push({ v: cellValue });
+        matrix[rowIndex][targetColIdx] = { v: cellValue };
       });
-
-      matrix.push(rowCells);
     });
 
     return matrix;
-  }, [filteredFilings, customColumns]);
+  }, [filteredFilings, customColumns, TARGET_ROW_LEN, TARGET_COL_LEN]);
 
   // FortuneSheet component data payload structural bundle config object array
   const sheetsConfig = useMemo(() => {
@@ -251,11 +256,11 @@ export function FilingsSpreadsheet() {
         id: "sheet-1",
         status: 1,
         data: cellMatrixData,
-        columnlen: FIXED_COLS.length + customColumns.length + 2,
-        rowlen: Math.max(cellMatrixData.length + 10, 25),
+        columnlen: TARGET_COL_LEN,
+        rowlen: TARGET_ROW_LEN,
       },
     ];
-  }, [cellMatrixData, customColumns.length]);
+  }, [cellMatrixData, TARGET_COL_LEN, TARGET_ROW_LEN]);
 
   // Handle cell edit events directly inside the FortuneSheet component grid
   const handleCellChange = (newData: any[]) => {

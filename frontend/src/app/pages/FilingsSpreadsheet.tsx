@@ -549,23 +549,24 @@ export function FilingsSpreadsheet() {
         💾 Click <strong>Save Layout & Changes</strong> to store cell contents, custom headers, deleted values, row/column resizes, and formatting attributes permanently.
       </p>
 
-      <div
-        className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden"
-        style={{ height: "calc(100vh - 260px)", minHeight: "550px", width: "100%" }}
-      >
-        <Workbook
-          data={sheetData}
-          onChange={handleCellChange}
-          onOp={handleOp}
-          config={{
-            showinfobar      : false,
-            sheetFormulaBar  : true,
-            showsheetbar     : false,
-            enableAddRow     : true,
-            enableAddBackTop : false,
-          }}
-        />
-      </div>
+      {/* ── CHANGE THIS CONTAINER ── */}
+<div
+  className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative"
+  style={{ height: "650px", width: "100%" }}
+>
+  <Workbook
+    data={sheetData}
+    onChange={handleCellChange}
+    onOp={handleOp}
+    config={{
+      showinfobar      : false,
+      sheetFormulaBar  : true,
+      showsheetbar     : false,
+      enableAddRow     : true,
+      enableAddBackTop : false,
+    }}
+  />
+</div>
 
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
         <h2 className="text-sm font-bold text-text-dark mb-3">Open Customer Workspace</h2>

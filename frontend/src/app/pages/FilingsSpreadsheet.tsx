@@ -214,6 +214,8 @@ export function FilingsSpreadsheet() {
 
   // ── Save handler — Persists all cell modifications and layout properties ────
 
+  // ── Save handler — Persists all cell modifications and layout properties ────
+
   const handleSave = async () => {
     const current = sheetDataRef.current;
     if (!current) return;
@@ -255,20 +257,24 @@ export function FilingsSpreadsheet() {
             updates.push({ filingId: filing.id, type: "payment", value: paymentVal });
           }
 
-          // 3. Custom Field Columns Check
+          // 3. Custom Field Columns Check (Handles deletions accurately)
           for (let cIdx = 0; cIdx < currentCustomCols.length; cIdx++) {
             const colDef = currentCustomCols[cIdx];
             const c = totalFixedCount + cIdx;
             const customCell = liveGrid[r]?.[c];
+            
             const currentCellVal = String(customCell?.v ?? customCell?.m ?? "").trim();
-            const oldCellVal = String(filing.custom_fields?.[colDef.field_key] ?? "").trim();
+            
+            // Safe fallback to empty string instead of breaking on undefined values
+            const rawOldVal = filing.custom_fields?.[colDef.field_key];
+            const oldCellVal = rawOldVal ? String(rawOldVal).trim() : "";
 
             if (currentCellVal !== oldCellVal) {
               updates.push({ 
                 filingId: filing.id, 
                 type: "custom_field", 
                 field_key: colDef.field_key, 
-                value: currentCellVal // Sends "" if deleted, which backend deletes from JSONB
+                value: currentCellVal // Properly propagates empty strings ("") on cell clears
               });
             }
           }

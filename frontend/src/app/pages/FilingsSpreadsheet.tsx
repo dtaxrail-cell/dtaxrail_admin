@@ -209,6 +209,8 @@ export function FilingsSpreadsheet() {
 
   // ── Save handler — Persists data modifications, text edits, and formatting properties ──
 
+  // ── Save handler — Persists data modifications, text edits, and formatting properties ──
+
   const handleSave = async () => {
     const current = sheetDataRef.current;
     if (!current) return;
@@ -253,9 +255,15 @@ export function FilingsSpreadsheet() {
             if (cell.un) styleObj.un = cell.un;
             if (cell.cl) styleObj.cl = cell.cl;
 
-            // Track any custom visual layout mappings applied over headers or records
+            // Preserve style properties for rows within the active table matrix safely
             if (r === 0 || (r > 0 && r <= currentFilings.length)) {
-              extraCelldata.push({ r, c, v: r === 0 ? val : undefined, s: styleObj });
+              // FIX: Keep 'v: val' for header row, but do NOT overwrite data cell strings with undefined!
+              extraCelldata.push({ 
+                r, 
+                c, 
+                v: r === 0 ? val : undefined, 
+                s: styleObj 
+              });
             }
 
             // Sync structured active text fields down to matching customer rows
@@ -268,9 +276,11 @@ export function FilingsSpreadsheet() {
                   updates.push({ filingId: filing.id, type: "payment", value: val });
                 } else if (c >= totalFixedCount) {
                   const colDef = currentCustomCols[c - totalFixedCount];
-                  const oldCellVal = filing.custom_fields?.[colDef?.field_key] ? String(filing.custom_fields[colDef.field_key]).trim() : "";
-                  if (colDef && val !== oldCellVal) {
-                    updates.push({ filingId: filing.id, type: "custom_field", field_key: colDef.field_key, value: val });
+                  if (colDef) {
+                    const oldCellVal = filing.custom_fields?.[colDef.field_key] ? String(filing.custom_fields[colDef.field_key]).trim() : "";
+                    if (val !== oldCellVal) {
+                      updates.push({ filingId: filing.id, type: "custom_field", field_key: colDef.field_key, value: val });
+                    }
                   }
                 }
               }

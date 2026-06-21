@@ -170,33 +170,53 @@ export function FilingsSpreadsheet() {
   useEffect(() => { filingsRef.current       = filings;       }, [filings]);
   useEffect(() => { customColumnsRef.current = customColumns; }, [customColumns]);
 
-  // ── Wheel event fix for FortuneSheet internal zoom > 80% ───────────────────
-  // When FortuneSheet's own zoom (bottom-right +/-) is above 80%, its canvas
-  // scales up but the internal scroll container div doesn't receive wheel
-  // events correctly — they fall through to the page. Fix: intercept wheel
-  // events on our wrapper and manually dispatch them onto FortuneSheet's own
-  // internal scroll div (.luckysheet-scrollbar-y / .luckysheet-scrollbar-x),
-  // bypassing the broken overlay track entirely.
+  // ── Wheel event fix for FortuneSheet internal zoom ──────────────────────────
+  // FortuneSheet has 3 zoom behaviour zones:
+  //   ≤ 80%  : native overlay works fine — no intervention needed
+  //   81-119%: overlay is partially misaligned — just preventDefault +
+  //            stopPropagation is enough to stop page stealing events,
+  //            FortuneSheet handles the rest itself
+  //   ≥ 120% : overlay completely breaks — must manually drive the internal
+  //            scrollbar divs directly
+  // We read the current zoom from FortuneSheet's zoomRatio on the sheet data.
   useEffect(() => {
     const el = sheetContainerRef.current;
     if (!el) return;
 
+    const getZoomPct = () => {
+      // FortuneSheet stores zoomRatio as 0.8, 1.0, 1.2 etc on the sheet object
+      const current = sheetDataRef.current;
+      if (!current || !current[0]) return 100;
+      return Math.round((current[0].zoomRatio ?? 1) * 100);
+    };
+
     const onWheel = (e: WheelEvent) => {
+      const zoom = getZoomPct();
+
+      if (zoom <= 80) {
+        // Native overlay works — let FortuneSheet handle it untouched
+        return;
+      }
+
+      // For all zoom > 80 we must at minimum stop the page from scrolling
       e.preventDefault();
       e.stopPropagation();
 
-      // Find FortuneSheet's internal vertical scroll container
-      const scrollY = el.querySelector<HTMLElement>(".luckysheet-scrollbar-y");
-      const scrollX = el.querySelector<HTMLElement>(".luckysheet-scrollbar-x");
+      if (zoom >= 120) {
+        // Overlay is fully broken — manually drive internal scroll containers
+        const scrollY = el.querySelector<HTMLElement>(".luckysheet-scrollbar-y");
+        const scrollX = el.querySelector<HTMLElement>(".luckysheet-scrollbar-x");
 
-      if (scrollY && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
-        scrollY.scrollTop += e.deltaY;
-        // Also fire a synthetic scroll event so FortuneSheet redraws
-        scrollY.dispatchEvent(new Event("scroll", { bubbles: true }));
-      } else if (scrollX) {
-        scrollX.scrollLeft += e.deltaX;
-        scrollX.dispatchEvent(new Event("scroll", { bubbles: true }));
+        if (scrollY && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+          scrollY.scrollTop += e.deltaY;
+          scrollY.dispatchEvent(new Event("scroll", { bubbles: true }));
+        } else if (scrollX) {
+          scrollX.scrollLeft += e.deltaX;
+          scrollX.dispatchEvent(new Event("scroll", { bubbles: true }));
+        }
       }
+      // 81–119%: preventDefault + stopPropagation above is sufficient —
+      // FortuneSheet's partially-working overlay takes it from here
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });

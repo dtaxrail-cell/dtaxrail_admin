@@ -1,7 +1,7 @@
 import { getPool } from "../config/db.js";
 
 // ==========================================
-// GET SHEET LAYOUT (row heights, col widths, etc.)
+// GET SHEET LAYOUT
 // ==========================================
 export const getSheetLayout = async (req, res) => {
   try {
@@ -19,7 +19,7 @@ export const getSheetLayout = async (req, res) => {
 };
 
 // ==========================================
-// SAVE SHEET LAYOUT (upsert the singleton row)
+// SAVE SHEET LAYOUT — stores full FortuneSheet snapshot
 // ==========================================
 export const saveSheetLayout = async (req, res) => {
   try {

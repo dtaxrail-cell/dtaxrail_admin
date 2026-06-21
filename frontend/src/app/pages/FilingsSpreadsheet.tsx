@@ -212,7 +212,7 @@ export function FilingsSpreadsheet() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ── Save handler ────────────────────────────────────────────────────────────
+  // ── Save handler — Persists all cell modifications and layout properties ────
 
   const handleSave = async () => {
     const current = sheetDataRef.current;
@@ -225,11 +225,64 @@ export function FilingsSpreadsheet() {
       const sheet = current[0];
       if (!sheet) return;
 
-      const dataRowCount = filingsRef.current.length + 1; 
-      const totalDataCols = FIXED_COLS.length + customColumnsRef.current.length;
+      const tok = await token();
+      const currentFilings = filingsRef.current;
+      const currentCustomCols = customColumnsRef.current;
+      const totalFixedCount = FIXED_COLS.length;
+      const dataRowCount = currentFilings.length + 1; 
+      const totalDataCols = totalFixedCount + currentCustomCols.length;
       const allCelldata: any[] = sheet.celldata ?? [];
-      
-      // Keep manual notes out of range or in empty slots safely
+
+      // 1. Compile map of existing cells for lookup
+      const cellMap = new Map<string, string>();
+      allCelldata.forEach((cell: any) => {
+        const val = String(cell.v?.v ?? cell.v?.m ?? "").trim();
+        cellMap.set(`${cell.r},${cell.c}`, val);
+      });
+
+      // 2. Scan and commit changes across the structured filing data rows
+      for (let rIdx = 0; rIdx < currentFilings.length; rIdx++) {
+        const r = rIdx + 1;
+        const filing = currentFilings[rIdx];
+
+        // Check Status changes
+        const statusVal = cellMap.get(`${r},6`) ?? "";
+        if (statusVal && statusVal !== filing.status) {
+          await fetch(`${API_BASE_URL}/filings/status/${filing.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+            body: JSON.stringify({ status: statusVal }),
+          });
+        }
+
+        // Check Payment status changes
+        const paymentVal = cellMap.get(`${r},7`) ?? "";
+        if (paymentVal && paymentVal !== filing.payment_status) {
+          await fetch(`${API_BASE_URL}/filings/payment/${filing.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+            body: JSON.stringify({ payment_status: paymentVal }),
+          });
+        }
+
+        // Check and capture Custom field data changes/deletions
+        for (let cIdx = 0; cIdx < currentCustomCols.length; cIdx++) {
+          const colDef = currentCustomCols[cIdx];
+          const c = totalFixedCount + cIdx;
+          const currentCellVal = cellMap.get(`${r},${c}`) ?? "";
+          const oldCellVal = filing.custom_fields?.[colDef.field_key] ?? "";
+
+          if (currentCellVal !== oldCellVal) {
+            await fetch(`${API_BASE_URL}/filings/custom-field/${filing.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+              body: JSON.stringify({ field_key: colDef.field_key, value: currentCellVal }),
+            });
+          }
+        }
+      }
+
+      // 3. Keep manual notes positioned entirely outside data range bounds
       const extraCelldata = allCelldata
         .filter((c: any) => c.r >= dataRowCount || c.c >= totalDataCols)
         .map((c: any) => ({
@@ -249,7 +302,6 @@ export function FilingsSpreadsheet() {
         totalCols: sheet.column ?? 30,
       };
 
-      const tok = await token();
       const res = await fetch(`${API_BASE_URL}/filings/sheet-layout`, {
         method  : "PUT",
         headers : { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
@@ -258,6 +310,7 @@ export function FilingsSpreadsheet() {
       const data = await res.json();
 
       setSaveMsg(data.success ? "saved" : "error");
+      await fetchData(); // Clean reload to align fresh updated DB values
     } catch (e) {
       console.error(e);
       setSaveMsg("error");
@@ -265,41 +318,6 @@ export function FilingsSpreadsheet() {
       setSaving(false);
       setTimeout(() => setSaveMsg(null), 3000);
     }
-  };
-
-  // ── Database synchronization handlers ──────────────────────────────────────
-
-  const updateStatus = async (filingId: string, status: string) => {
-    try {
-      const tok = await token();
-      await fetch(`${API_BASE_URL}/filings/status/${filingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ status }),
-      });
-    } catch (e) { console.error(e); }
-  };
-
-  const updatePayment = async (filingId: string, payment_status: string) => {
-    try {
-      const tok = await token();
-      await fetch(`${API_BASE_URL}/filings/payment/${filingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ payment_status }),
-      });
-    } catch (e) { console.error(e); }
-  };
-
-  const updateCustomField = async (filingId: string, field_key: string, value: string) => {
-    try {
-      const tok = await token();
-      await fetch(`${API_BASE_URL}/filings/custom-field/${filingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ field_key, value }),
-      });
-    } catch (e) { console.error(e); }
   };
 
   const addColumnBackend = async (label: string) => {
@@ -325,12 +343,11 @@ export function FilingsSpreadsheet() {
     } catch (e) { console.error(e); }
   };
 
-  // ── Live changes detection ─────────────────────────────────────────────────
+  // ── handle sheet cell adjustments locally ───────────────────────────────────
 
   const handleCellChange = (newData: any[]) => {
     if (!newData || !newData[0]) return;
     
-    const currentFilings    = filingsRef.current;
     const currentCustomCols = customColumnsRef.current;
     const totalFixedCount   = FIXED_COLS.length;
     const updatedCelldata: any[] = newData[0]?.celldata ?? [];
@@ -346,35 +363,11 @@ export function FilingsSpreadsheet() {
       });
     }
 
-    // Sync individual updates
-    updatedCelldata.forEach((cellItem: any) => {
-      const { r, c } = cellItem;
-      if (r === 0) return; // ignore headers
-      const filingForRow = currentFilings[r - 1];
-      if (!filingForRow) return;
-
-      const newVal = String(cellItem.v?.v ?? cellItem.v?.m ?? "");
-
-      if (c < totalFixedCount) {
-        const fieldKey = FIXED_COLS[c].key;
-        const oldVal   = String((filingForRow as any)[fieldKey] ?? "");
-        if (oldVal === newVal) return;
-        if (fieldKey === "status")              updateStatus(filingForRow.id, newVal);
-        else if (fieldKey === "payment_status") updatePayment(filingForRow.id, newVal);
-      } else {
-        const customIdx = c - totalFixedCount;
-        const colDef = currentCustomCols[customIdx];
-        if (!colDef) return;
-        const oldVal = String(filingForRow.custom_fields?.[colDef.field_key] ?? "");
-        if (oldVal === newVal) return;
-        updateCustomField(filingForRow.id, colDef.field_key, newVal);
-      }
-    });
-
     setSheetData(newData);
   };
 
   const handleOp = useCallback(async (ops: any[]) => {
+    let columnDeleted = false;
     for (const op of ops) {
       if (op?.op === "deleteRowCol" && op.value?.type === "column") {
         const startCol = op.value.index;
@@ -385,14 +378,18 @@ export function FilingsSpreadsheet() {
           const customIdx = c - FIXED_COLS.length;
           if (customIdx < 0) continue;
           const colToDelete = cols[customIdx];
-          if (colToDelete) await deleteColumnBackend(colToDelete.field_key);
+          if (colToDelete) {
+            await deleteColumnBackend(colToDelete.field_key);
+            columnDeleted = true;
+          }
         }
-        await fetchData();
       }
     }
+    if (columnDeleted) {
+      sheetDataRef.current = null;
+      await fetchData();
+    }
   }, []);
-
-  // ── export handler ──────────────────────────────────────────────────────────
 
   const exportExcel = async () => {
     const XLSX = await import("xlsx");
@@ -445,7 +442,7 @@ export function FilingsSpreadsheet() {
             }`}
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? "Saving..." : saveMsg === "saved" ? "Saved ✓" : saveMsg === "error" ? "Error — Retry" : "Save Layout"}
+            {saving ? "Saving..." : saveMsg === "saved" ? "Saved ✓" : saveMsg === "error" ? "Error — Retry" : "Save Layout & Changes"}
           </button>
 
           <button
@@ -459,7 +456,7 @@ export function FilingsSpreadsheet() {
       </div>
 
       <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 font-medium">
-        💾 After resizing columns/rows, adding new custom headers, or typing extra data down below, click <strong>Save Layout</strong> to preserve everything safely.
+        💾 Click <strong>Save Layout & Changes</strong> to store cell edits, custom field modifications, deleted notes, or size updates securely to the database.
       </p>
 
       <div

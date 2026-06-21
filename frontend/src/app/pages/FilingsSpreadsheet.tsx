@@ -161,13 +161,35 @@ export function FilingsSpreadsheet() {
   const [saveMsg,       setSaveMsg      ] = useState<"saved" | "error" | null>(null);
   const [sheetData,     setSheetData    ] = useState<any[] | null>(null);
 
-  const sheetDataRef     = useRef<any[] | null>(null);
-  const filingsRef       = useRef<Filing[]>([]);
-  const customColumnsRef = useRef<CustomColumn[]>([]);
+  const sheetDataRef      = useRef<any[] | null>(null);
+  const filingsRef        = useRef<Filing[]>([]);
+  const customColumnsRef  = useRef<CustomColumn[]>([]);
+  const sheetContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { sheetDataRef.current     = sheetData;     }, [sheetData]);
   useEffect(() => { filingsRef.current       = filings;       }, [filings]);
   useEffect(() => { customColumnsRef.current = customColumns; }, [customColumns]);
+
+  // ── Wheel event fix — stops browser stealing scroll from FortuneSheet ──────
+  // At zoom levels > 80% the browser's DPI scaling causes wheel events that
+  // originate inside the sheet to bubble up to the page scroll handler before
+  // FortuneSheet's canvas can act on them, locking upward scroll.
+  // We intercept wheel events on the container with { passive: false } and
+  // call stopPropagation so only FortuneSheet handles them.
+  useEffect(() => {
+    const el = sheetContainerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      // Only intercept when the pointer is genuinely inside the sheet box
+      e.stopPropagation();
+    };
+
+    // passive: false is required — without it stopPropagation has no effect
+    // on wheel events in Chrome/Edge
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   const token = async () => (await auth.currentUser?.getIdToken()) ?? "";
 
@@ -523,18 +545,15 @@ export function FilingsSpreadsheet() {
             coordinate system correctly in both directions
         ─────────────────────────────────────────────────────────────────────── */}
       <div
+        ref={sheetContainerRef}
         style={{
-          position  : "relative",
-          width     : "100%",
-          height    : "650px",
-          // overflow:hidden clips FortuneSheet's scroll overlay tracks at high
-          // zoom levels causing the scroll-up lock. Using clip-path instead
-          // visually constrains the box without blocking pointer events on the
-          // canvas overlay that sits just outside the reported bounds.
-          overflow  : "visible",
-          clipPath  : "inset(0 round 16px)",
-          border    : "1px solid #e5e7eb",
-          boxShadow : "0 1px 4px rgba(0,0,0,0.08)",
+          position    : "relative",
+          width       : "100%",
+          height      : "650px",
+          overflow    : "hidden",
+          borderRadius: "16px",
+          border      : "1px solid #e5e7eb",
+          boxShadow   : "0 1px 4px rgba(0,0,0,0.08)",
         }}
       >
         <Workbook

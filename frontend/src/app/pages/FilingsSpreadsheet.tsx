@@ -170,23 +170,35 @@ export function FilingsSpreadsheet() {
   useEffect(() => { filingsRef.current       = filings;       }, [filings]);
   useEffect(() => { customColumnsRef.current = customColumns; }, [customColumns]);
 
-  // ── Wheel event fix — stops browser stealing scroll from FortuneSheet ──────
-  // At zoom levels > 80% the browser's DPI scaling causes wheel events that
-  // originate inside the sheet to bubble up to the page scroll handler before
-  // FortuneSheet's canvas can act on them, locking upward scroll.
-  // We intercept wheel events on the container with { passive: false } and
-  // call stopPropagation so only FortuneSheet handles them.
+  // ── Wheel event fix for FortuneSheet internal zoom > 80% ───────────────────
+  // When FortuneSheet's own zoom (bottom-right +/-) is above 80%, its canvas
+  // scales up but the internal scroll container div doesn't receive wheel
+  // events correctly — they fall through to the page. Fix: intercept wheel
+  // events on our wrapper and manually dispatch them onto FortuneSheet's own
+  // internal scroll div (.luckysheet-scrollbar-y / .luckysheet-scrollbar-x),
+  // bypassing the broken overlay track entirely.
   useEffect(() => {
     const el = sheetContainerRef.current;
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
-      // Only intercept when the pointer is genuinely inside the sheet box
+      e.preventDefault();
       e.stopPropagation();
+
+      // Find FortuneSheet's internal vertical scroll container
+      const scrollY = el.querySelector<HTMLElement>(".luckysheet-scrollbar-y");
+      const scrollX = el.querySelector<HTMLElement>(".luckysheet-scrollbar-x");
+
+      if (scrollY && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+        scrollY.scrollTop += e.deltaY;
+        // Also fire a synthetic scroll event so FortuneSheet redraws
+        scrollY.dispatchEvent(new Event("scroll", { bubbles: true }));
+      } else if (scrollX) {
+        scrollX.scrollLeft += e.deltaX;
+        scrollX.dispatchEvent(new Event("scroll", { bubbles: true }));
+      }
     };
 
-    // passive: false is required — without it stopPropagation has no effect
-    // on wheel events in Chrome/Edge
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, []);

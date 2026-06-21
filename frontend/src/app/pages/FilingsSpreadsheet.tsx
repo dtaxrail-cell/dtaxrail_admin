@@ -170,13 +170,6 @@ export function FilingsSpreadsheet() {
   const filingsRef       = useRef<Filing[]>([]);
   const customColumnsRef = useRef<CustomColumn[]>([]);
 
-  // ← NEW: ref to the FortuneSheet Workbook instance itself.
-  // FortuneSheet exposes getAllSheets() which always reflects the TRUE
-  // internal state, regardless of whether onChange fired for a given edit.
-  // We need this because Backspace/Delete clears don't always trigger
-  // onChange, leaving sheetDataRef stale at save time.
-  const workbookRef = useRef<any>(null);
-
   useEffect(() => { sheetDataRef.current     = sheetData;     }, [sheetData]);
   useEffect(() => { filingsRef.current       = filings;       }, [filings]);
   useEffect(() => { customColumnsRef.current = customColumns; }, [customColumns]);
@@ -217,35 +210,21 @@ export function FilingsSpreadsheet() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // ── Save handler ────────────────────────────────────────────────────────────
+
   // ── Save handler — Persists all cell modifications and layout properties ────
-  //
-  // FIX: Cell deletions (Backspace/Delete) were not syncing to the backend.
-  // Root cause: this function used to read from `sheetDataRef.current`, a
-  // React-state mirror populated only when FortuneSheet's `onChange` fires.
-  // FortuneSheet does not reliably fire `onChange` for every Backspace/Delete
-  // clear, so that mirror could be stale exactly when a cell was cleared —
-  // the diff loop then compared old data against itself and found no change,
-  // so the clear was silently dropped and never sent to the server.
-  //
-  // Fix: pull the live sheet straight from the Workbook ref via
-  // `getAllSheets()` at the moment Save is clicked. This is FortuneSheet's
-  // own imperative API and always reflects the true current state — including
-  // cells cleared via Backspace/Delete — independent of onChange timing.
-  // We then rebuild a `liveGrid` lookup table from that authoritative
-  // `celldata` array. Since `celldata` only contains cells that currently
-  // have content, any cell coordinate that's missing from it is correctly
-  // treated as cleared (resolves to undefined → "" below), which is exactly
-  // the behavior needed to detect deletions.
+
+  // ── Save handler — Persists all cell modifications and layout properties ────
+
   const handleSave = async () => {
+    const current = sheetDataRef.current;
+    if (!current) return;
+
     setSaving(true);
     setSaveMsg(null);
 
     try {
-      // Pull the TRUE live state from FortuneSheet's imperative API.
-      // Falls back to the React-state mirror only if the ref isn't ready
-      // for some reason (defensive — should not normally happen).
-      const liveSheets = workbookRef.current?.getAllSheets?.();
-      const sheet = liveSheets?.[0] ?? sheetDataRef.current?.[0];
+      const sheet = current[0];
       if (!sheet) return;
 
       const tok = await token();
@@ -255,16 +234,8 @@ export function FilingsSpreadsheet() {
       const dataRowCount = currentFilings.length + 1; 
       const totalDataCols = totalFixedCount + currentCustomCols.length;
 
-      // Rebuild the 2D lookup grid fresh from the authoritative celldata
-      // snapshot returned by getAllSheets(). A coordinate simply won't
-      // appear here if its cell was cleared — that's what makes deletions
-      // detectable below via `liveGrid[r]?.[c]` resolving to undefined.
-      const liveGrid: any[][] = [];
-      (sheet.celldata ?? []).forEach((cell: any) => {
-        if (!liveGrid[cell.r]) liveGrid[cell.r] = [];
-        liveGrid[cell.r][cell.c] = cell.v;
-      });
-
+      // Access the real-time 2D data grid array populated by FortuneSheet edits
+      const liveGrid = sheet.data;
       const updates: any[] = [];
 
       if (liveGrid) {
@@ -518,7 +489,6 @@ export function FilingsSpreadsheet() {
         style={{ height: "calc(100vh - 260px)", minHeight: "550px", width: "100%" }}
       >
         <Workbook
-          ref={workbookRef}
           data={sheetData}
           onChange={handleCellChange}
           onOp={handleOp}

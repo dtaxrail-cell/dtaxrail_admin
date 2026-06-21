@@ -527,8 +527,12 @@ export function FilingsSpreadsheet() {
           position  : "relative",
           width     : "100%",
           height    : "650px",
-          overflow  : "hidden",
-          borderRadius: "16px",
+          // overflow:hidden clips FortuneSheet's scroll overlay tracks at high
+          // zoom levels causing the scroll-up lock. Using clip-path instead
+          // visually constrains the box without blocking pointer events on the
+          // canvas overlay that sits just outside the reported bounds.
+          overflow  : "visible",
+          clipPath  : "inset(0 round 16px)",
           border    : "1px solid #e5e7eb",
           boxShadow : "0 1px 4px rgba(0,0,0,0.08)",
         }}

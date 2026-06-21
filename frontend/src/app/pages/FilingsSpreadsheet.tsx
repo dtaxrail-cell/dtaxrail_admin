@@ -202,21 +202,20 @@ export function FilingsSpreadsheet() {
       e.preventDefault();
       e.stopPropagation();
 
-      if (zoom >= 120) {
-        // Overlay is fully broken — manually drive internal scroll containers
-        const scrollY = el.querySelector<HTMLElement>(".luckysheet-scrollbar-y");
-        const scrollX = el.querySelector<HTMLElement>(".luckysheet-scrollbar-x");
+      // Manually drive scroll for ALL broken ranges: 81-119% and 90/100 default
+      // At 110%+ the overlay partially works on its own after preventDefault,
+      // but at 90-100% (the most common defaults) it doesn't — so we always
+      // manually drive the internal scrollbars for the full 81-119% range too.
+      const scrollY = el.querySelector<HTMLElement>(".luckysheet-scrollbar-y");
+      const scrollX = el.querySelector<HTMLElement>(".luckysheet-scrollbar-x");
 
-        if (scrollY && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
-          scrollY.scrollTop += e.deltaY;
-          scrollY.dispatchEvent(new Event("scroll", { bubbles: true }));
-        } else if (scrollX) {
-          scrollX.scrollLeft += e.deltaX;
-          scrollX.dispatchEvent(new Event("scroll", { bubbles: true }));
-        }
+      if (scrollY && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+        scrollY.scrollTop += e.deltaY;
+        scrollY.dispatchEvent(new Event("scroll", { bubbles: true }));
+      } else if (scrollX) {
+        scrollX.scrollLeft += e.deltaX;
+        scrollX.dispatchEvent(new Event("scroll", { bubbles: true }));
       }
-      // 81–119%: preventDefault + stopPropagation above is sufficient —
-      // FortuneSheet's partially-working overlay takes it from here
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });

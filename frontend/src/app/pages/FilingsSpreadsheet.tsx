@@ -550,23 +550,26 @@ export function FilingsSpreadsheet() {
       </p>
 
       {/* ── CHANGE THIS CONTAINER ── */}
-<div
-  className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative"
-  style={{ height: "650px", width: "100%" }}
->
-  <Workbook
-    data={sheetData}
-    onChange={handleCellChange}
-    onOp={handleOp}
-    config={{
-      showinfobar      : false,
-      sheetFormulaBar  : true,
-      showsheetbar     : false,
-      enableAddRow     : true,
-      enableAddBackTop : false,
-    }}
-  />
-</div>
+{/* ── UPDATED CONTAINER WRAPPER FOR SMOOTH SCROLLING ── */}
+      <div 
+        className="rounded-2xl border border-gray-200 bg-white shadow-md relative"
+        style={{ height: "650px", width: "100%", display: "flex", flexDirection: "column" }}
+      >
+        <div style={{ flex: 1, position: "relative", width: "100%", height: "100%" }}>
+          <Workbook
+            data={sheetData}
+            onChange={handleCellChange}
+            onOp={handleOp}
+            config={{
+              showinfobar      : false,
+              sheetFormulaBar  : true,
+              showsheetbar     : false,
+              enableAddRow     : true,
+              enableAddBackTop : false,
+            }}
+          />
+        </div>
+      </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
         <h2 className="text-sm font-bold text-text-dark mb-3">Open Customer Workspace</h2>

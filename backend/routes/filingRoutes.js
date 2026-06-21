@@ -25,6 +25,11 @@ import {
 
 } from "../controllers/filingController.js";
 
+import {
+  getSheetLayout,
+  saveSheetLayout,
+} from "../controllers/filingLayoutController.js";
+
 import { deleteDocument } from "../controllers/documentController.js";
 
 const router = express.Router();
@@ -75,6 +80,32 @@ router.get(
   authMiddleware,
   adminMiddleware,
   getFilings
+);
+
+
+
+// ==========================================
+// ADMIN — GET SHEET LAYOUT (row heights, col widths, extra rows)
+// ⚠️ Must be before /:filingId
+// ==========================================
+router.get(
+  "/sheet-layout",
+  authMiddleware,
+  adminMiddleware,
+  getSheetLayout
+);
+
+
+
+// ==========================================
+// ADMIN — SAVE SHEET LAYOUT
+// ⚠️ Must be before /:filingId
+// ==========================================
+router.put(
+  "/sheet-layout",
+  authMiddleware,
+  adminMiddleware,
+  saveSheetLayout
 );
 
 

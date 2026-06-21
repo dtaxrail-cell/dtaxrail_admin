@@ -214,6 +214,8 @@ export function FilingsSpreadsheet() {
 
   // ── Save handler — Persists all cell modifications and layout properties ────
 
+  // ── Save handler — Persists all cell modifications and layout properties ────
+
   const handleSave = async () => {
     const current = sheetDataRef.current;
     if (!current) return;
@@ -233,9 +235,10 @@ export function FilingsSpreadsheet() {
       const totalDataCols = totalFixedCount + currentCustomCols.length;
       const allCelldata: any[] = sheet.celldata ?? [];
 
-      // 1. Compile map of existing cells for lookup
+      // 1. Compile map of existing cells for accurate lookup
       const cellMap = new Map<string, string>();
       allCelldata.forEach((cell: any) => {
+        if (!cell) return;
         const val = String(cell.v?.v ?? cell.v?.m ?? "").trim();
         cellMap.set(`${cell.r},${cell.c}`, val);
       });
@@ -245,9 +248,9 @@ export function FilingsSpreadsheet() {
         const r = rIdx + 1;
         const filing = currentFilings[rIdx];
 
-        // Check Status changes
+        // Check Status changes (Column 6)
         const statusVal = cellMap.get(`${r},6`) ?? "";
-        if (statusVal && statusVal !== filing.status) {
+        if (statusVal !== String(filing.status ?? "")) {
           await fetch(`${API_BASE_URL}/filings/status/${filing.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
@@ -255,9 +258,9 @@ export function FilingsSpreadsheet() {
           });
         }
 
-        // Check Payment status changes
+        // Check Payment status changes (Column 7)
         const paymentVal = cellMap.get(`${r},7`) ?? "";
-        if (paymentVal && paymentVal !== filing.payment_status) {
+        if (paymentVal !== String(filing.payment_status ?? "")) {
           await fetch(`${API_BASE_URL}/filings/payment/${filing.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
@@ -270,7 +273,7 @@ export function FilingsSpreadsheet() {
           const colDef = currentCustomCols[cIdx];
           const c = totalFixedCount + cIdx;
           const currentCellVal = cellMap.get(`${r},${c}`) ?? "";
-          const oldCellVal = filing.custom_fields?.[colDef.field_key] ?? "";
+          const oldCellVal = String(filing.custom_fields?.[colDef.field_key] ?? "");
 
           if (currentCellVal !== oldCellVal) {
             await fetch(`${API_BASE_URL}/filings/custom-field/${filing.id}`, {
@@ -310,11 +313,13 @@ export function FilingsSpreadsheet() {
       const data = await res.json();
 
       setSaveMsg(data.success ? "saved" : "error");
-      await fetchData(); // Clean reload to align fresh updated DB values
+      
+      // Clean reload to pull updated database states securely
+      await fetchData(); 
     } catch (e) {
-      console.error(e);
+      console.error("Save failure details:", e);
       setSaveMsg("error");
-    } finally {
+    } {
       setSaving(false);
       setTimeout(() => setSaveMsg(null), 3000);
     }

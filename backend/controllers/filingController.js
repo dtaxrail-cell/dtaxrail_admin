@@ -99,12 +99,23 @@ export const bulkUpdateFilings = async (req, res) => {
         }
       } 
       else if (type === "custom_field" && field_key) {
-        await client.query(
-          `UPDATE filings 
-           SET custom_fields = COALESCE(custom_fields, '{}') || jsonb_build_object($1::text, $2::text) 
-           WHERE id = $3`,
-          [field_key, String(value), filingId]
-        );
+        if (value === "") {
+          // Explicitly drop key from JSONB object if cell content was deleted
+          await client.query(
+            `UPDATE filings 
+             SET custom_fields = COALESCE(custom_fields, '{}'::jsonb) - $1::text 
+             WHERE id = $2`,
+            [field_key, filingId]
+          );
+        } else {
+          // Upsert/Update field key with the modified value
+          await client.query(
+            `UPDATE filings 
+             SET custom_fields = COALESCE(custom_fields, '{}'::jsonb) || jsonb_build_object($1::text, $2::text) 
+             WHERE id = $3`,
+            [field_key, String(value), filingId]
+          );
+        }
       }
     }
 

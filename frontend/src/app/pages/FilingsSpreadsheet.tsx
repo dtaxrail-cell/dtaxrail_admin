@@ -212,6 +212,8 @@ export function FilingsSpreadsheet() {
 
   // ── Save handler ────────────────────────────────────────────────────────────
 
+  // ── Save handler — Persists all cell modifications and layout properties ────
+
   const handleSave = async () => {
     const current = sheetDataRef.current;
     if (!current) return;
@@ -230,8 +232,9 @@ export function FilingsSpreadsheet() {
       const dataRowCount = currentFilings.length + 1; 
       const totalDataCols = totalFixedCount + currentCustomCols.length;
 
-      // Access the real-time 2D data array populated by FortuneSheet edits
+      // Access the real-time 2D data grid array populated by FortuneSheet edits
       const liveGrid = sheet.data;
+      const updates: any[] = [];
 
       if (liveGrid) {
         for (let rIdx = 0; rIdx < currentFilings.length; rIdx++) {
@@ -242,22 +245,14 @@ export function FilingsSpreadsheet() {
           const statusCell = liveGrid[r]?.[6];
           const statusVal = String(statusCell?.v ?? statusCell?.m ?? "").trim();
           if (statusVal !== String(filing.status ?? "")) {
-            await fetch(`${API_BASE_URL}/filings/status/${filing.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-              body: JSON.stringify({ status: statusVal }),
-            });
+            updates.push({ filingId: filing.id, type: "status", value: statusVal });
           }
 
           // 2. Payment Status Check (Column 7)
           const paymentCell = liveGrid[r]?.[7];
           const paymentVal = String(paymentCell?.v ?? paymentCell?.m ?? "").trim();
           if (paymentVal !== String(filing.payment_status ?? "")) {
-            await fetch(`${API_BASE_URL}/filings/payment/${filing.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-              body: JSON.stringify({ payment_status: paymentVal }),
-            });
+            updates.push({ filingId: filing.id, type: "payment", value: paymentVal });
           }
 
           // 3. Custom Field Columns Check
@@ -269,10 +264,11 @@ export function FilingsSpreadsheet() {
             const oldCellVal = String(filing.custom_fields?.[colDef.field_key] ?? "").trim();
 
             if (currentCellVal !== oldCellVal) {
-              await fetch(`${API_BASE_URL}/filings/custom-field/${filing.id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-                body: JSON.stringify({ field_key: colDef.field_key, value: currentCellVal }),
+              updates.push({ 
+                filingId: filing.id, 
+                type: "custom_field", 
+                field_key: colDef.field_key, 
+                value: currentCellVal // Sends "" if deleted, which backend deletes from JSONB
               });
             }
           }
@@ -294,14 +290,24 @@ export function FilingsSpreadsheet() {
         totalCols: sheet.column ?? 30,
       };
 
-      const res = await fetch(`${API_BASE_URL}/filings/sheet-layout`, {
-        method  : "PUT",
-        headers : { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-        body    : JSON.stringify({ layout: { prefs } }),
-      });
-      const data = await res.json();
+      // Fire both bulk dataset updates and layout adjustments simultaneously
+      const [dataRes, layoutRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/filings/bulk-update`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+          body: JSON.stringify({ updates }),
+        }),
+        fetch(`${API_BASE_URL}/filings/sheet-layout`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+          body: JSON.stringify({ layout: { prefs } }),
+        })
+      ]);
 
-      setSaveMsg(data.success ? "saved" : "error");
+      const dataResult = await dataRes.json();
+      const layoutResult = await layoutRes.json();
+
+      setSaveMsg(dataResult.success && layoutResult.success ? "saved" : "error");
       await fetchData(); 
     } catch (e) {
       console.error("Save failed:", e);

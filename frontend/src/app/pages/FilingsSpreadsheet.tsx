@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { auth } from "../../lib/firebase";
 import { API_BASE_URL } from "../../config/api";
-import { Download, Plus } from "lucide-react";
+import { Download } from "lucide-react";
 import { Workbook } from "@fortune-sheet/react";
 import "@fortune-sheet/react/dist/index.css";
+import { Link } from "react-router";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -41,10 +42,10 @@ const FIXED_COLS = [
   { key: "payment_status",  label: "Payment"    },
 ] as const;
 
-// ✅ Fixed column count, much higher so it feels "unlimited" — grid will
-// always show plenty of empty trailing columns no matter how many custom
-// columns are added, and grows further if needed (see fetchData below).
-const MIN_TOTAL_COLUMNS = 60;
+// ✅ Point 1: columns now grow dynamically — base buffer of 10 spare columns
+// beyond real data, and if the admin adds enough custom columns to use them
+// all up, the sheet rebuilds with more buffer automatically (see buildSheet).
+const COLUMN_BUFFER = 10;
 
 function cell(r: number, c: number, value: string, extra: Record<string, any> = {}) {
   return {
@@ -63,11 +64,19 @@ export function FilingsSpreadsheet() {
   const [filings, setFilings] = useState<Filing[]>([]);
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newColLabel, setNewColLabel] = useState("");
-  const [addingCol, setAddingCol] = useState(false);
   const [sheetData, setSheetData] = useState<any[] | null>(null);
 
-  const buildSheet = (fetchedFilings: Filing[], fetchedCustomCols: CustomColumn[]) => {
+  // Holds the last-saved layout (row heights, col widths, extra blank rows)
+  // fetched once on load, merged into the rebuilt sheet on every refresh.
+  const savedLayoutRef = useRef<Record<string, any>>({});
+
+  // ── build the FortuneSheet sheet object ─────────────────────────────────────
+
+  const buildSheet = (
+    fetchedFilings: Filing[],
+    fetchedCustomCols: CustomColumn[],
+    layout: Record<string, any>
+  ) => {
     const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
     const celldata: any[] = [];
 
@@ -97,6 +106,29 @@ export function FilingsSpreadsheet() {
       });
     });
 
+    // ✅ Point 4: re-apply any extra blank rows / manual cell edits the admin
+    // made beyond the real data rows (stored in layout.extraCelldata), so
+    // typed notes in blank rows below the data survive a refresh.
+    const dataRowCount = fetchedFilings.length + 1; // +1 for header
+    const extraCelldata: any[] = Array.isArray(layout.extraCelldata)
+      ? layout.extraCelldata.filter((c: any) => c.r >= dataRowCount)
+      : [];
+
+    const allCelldata = [...celldata, ...extraCelldata];
+
+    // ✅ Point 1: figure out how many rows/columns the saved layout actually
+    // used, so re-applying row heights/col widths and extra rows doesn't get
+    // truncated, and so newly added columns beyond BH keep working.
+    const layoutMaxRow = Array.isArray(layout.extraCelldata)
+      ? layout.extraCelldata.reduce((m: number, c: any) => Math.max(m, c.r), 0)
+      : 0;
+    const layoutMaxCol = layout.config?.columnlen
+      ? Math.max(...Object.keys(layout.config.columnlen).map(Number), 0)
+      : 0;
+
+    const totalRows = Math.max(fetchedFilings.length + 20, 40, layoutMaxRow + 10);
+    const totalCols = Math.max(totalDataCols + COLUMN_BUFFER, layoutMaxCol + 10, 30);
+
     return [
       {
         name: "Filings Matrix",
@@ -105,12 +137,15 @@ export function FilingsSpreadsheet() {
         status: 1,
         order: 0,
         hide: 0,
-        row: Math.max(fetchedFilings.length + 20, 40),
-        // ✅ Always at least MIN_TOTAL_COLUMNS (60 → up to column "BH"),
-        // and grows further automatically if custom columns exceed that.
-        column: Math.max(totalDataCols + 10, MIN_TOTAL_COLUMNS),
-        celldata,
-        config: {},
+        row: totalRows,
+        column: totalCols,
+        celldata: allCelldata,
+        // ✅ Point 4: row heights / column widths from saved layout, merged in.
+        config: {
+          rowlen: layout.config?.rowlen ?? {},
+          columnlen: layout.config?.columnlen ?? {},
+          merge: layout.config?.merge ?? {},
+        },
         scrollLeft: 0,
         scrollTop: 0,
         luckysheet_select_save: [],
@@ -133,21 +168,34 @@ export function FilingsSpreadsheet() {
     ];
   };
 
+  // ── fetch filings + custom columns + saved layout ───────────────────────────
+
   const fetchData = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+
+      const [filingsRes, layoutRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE_URL}/filings/sheet-layout?_ts=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      const data = await filingsRes.json();
+      const layoutData = await layoutRes.json();
 
       if (data.success) {
         const fetchedFilings: Filing[] = data.filings ?? [];
         const fetchedCustomCols: CustomColumn[] = data.customColumns ?? [];
+        const layout = layoutData?.success ? (layoutData.layout ?? {}) : {};
+
+        savedLayoutRef.current = layout;
 
         setFilings(fetchedFilings);
         setCustomColumns(fetchedCustomCols);
-        setSheetData(buildSheet(fetchedFilings, fetchedCustomCols));
+        setSheetData(buildSheet(fetchedFilings, fetchedCustomCols, layout));
       }
     } catch (e) {
       console.error(e);
@@ -160,7 +208,11 @@ export function FilingsSpreadsheet() {
     fetchData();
   }, []);
 
+  // ── token helper ───────────────────────────────────────────────────────────
+
   const token = async () => (await auth.currentUser?.getIdToken()) ?? "";
+
+  // ── cell value updates (status / payment / custom fields) ──────────────────
 
   const updateStatus = async (filingId: string, status: string) => {
     try {
@@ -198,7 +250,27 @@ export function FilingsSpreadsheet() {
     }
   };
 
-  // ── delete custom column on the BACKEND ────────────────────────────────────
+  // ── custom column add/delete ────────────────────────────────────────────────
+  // ✅ Point 3: "Add column" button removed from the header bar entirely.
+  // ✅ Point 1 + 5: adding/deleting a column now happens by typing directly
+  // into a blank header cell beyond the current data (row 0), or by
+  // right-clicking an existing custom column header and choosing Delete.
+  // Both paths sync to the backend so they survive a refresh.
+
+  const addColumnBackend = async (label: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/filings/custom-columns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ label }),
+      });
+      const data = await res.json();
+      return data?.success ? data.column : null;
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  };
 
   const deleteColumnBackend = async (field_key: string) => {
     try {
@@ -211,24 +283,59 @@ export function FilingsSpreadsheet() {
     }
   };
 
-  const addColumn = async () => {
-    if (!newColLabel.trim()) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/filings/custom-columns`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ label: newColLabel.trim() }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNewColLabel("");
-        setAddingCol(false);
-        fetchData();
+  // ── save sheet layout (row heights, col widths, extra blank-row content) ──
+  // ✅ Point 4: debounced save whenever structural/layout state changes.
+
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const persistLayout = useCallback((newData: any[]) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const sheet = newData[0];
+        if (!sheet) return;
+
+        const dataRowCount = filings.length + 1;
+        const matrix = sheet.data;
+        const extraCelldata: any[] = [];
+
+        if (Array.isArray(matrix)) {
+          matrix.forEach((row: any[], r: number) => {
+            if (r < dataRowCount || !row) return;
+            row.forEach((cellObj: any, c: number) => {
+              const v = cellObj?.v ?? cellObj?.m;
+              if (v !== null && v !== undefined && v !== "") {
+                extraCelldata.push({ r, c, v: String(v) });
+              }
+            });
+          });
+        }
+
+        const layout = {
+          config: {
+            rowlen: sheet.config?.rowlen ?? {},
+            columnlen: sheet.config?.columnlen ?? {},
+            merge: sheet.config?.merge ?? {},
+          },
+          extraCelldata,
+        };
+
+        savedLayoutRef.current = layout;
+
+        await fetch(`${API_BASE_URL}/filings/sheet-layout`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+          body: JSON.stringify({ layout }),
+        });
+      } catch (e) {
+        console.error(e);
       }
-    } catch (e) {
-      console.error(e);
-    }
-  };
+    }, 600);
+  }, [filings]);
+
+  // ── excel export ───────────────────────────────────────────────────────────
+  // ✅ Point 2: exported sheet auto-fits column widths to content + freezes
+  // header row, same logic as before but explicitly confirmed/kept.
 
   const exportExcel = async () => {
     const XLSX = await import("xlsx");
@@ -256,74 +363,90 @@ export function FilingsSpreadsheet() {
     XLSX.writeFile(wb, `DTaxRail_Filings_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  // ── cell value changes (status/payment/custom fields) ──────────────────────
+  // ── handle cell value changes ────────────────────────────────────────────────
 
   const handleCellChange = (newData: any[]) => {
     if (!sheetData) return;
     const updatedMatrix = newData[0]?.data;
-    if (!updatedMatrix) {
-      setSheetData(newData);
-      return;
+
+    if (updatedMatrix) {
+      const totalFixedCount = FIXED_COLS.length;
+      const headerRow = updatedMatrix[0];
+
+      // ✅ Point 1 + 5: detect a NEW label typed into a previously-blank
+      // header cell beyond current custom columns — auto-create that column
+      // on the backend (same flow as the old "Add column" button, just
+      // triggered inline by typing the header directly).
+      if (headerRow) {
+        const firstBlankCustomCol = totalFixedCount + customColumns.length;
+        const maybeNewHeaderCell = headerRow[firstBlankCustomCol];
+        const maybeNewLabel = String(maybeNewHeaderCell?.v ?? maybeNewHeaderCell?.m ?? "").trim();
+
+        if (maybeNewLabel) {
+          addColumnBackend(maybeNewLabel).then((col) => {
+            if (col) fetchData(); // resync so the new column's field_key/order is correct
+          });
+        }
+      }
+
+      // ── existing fixed/custom cell value diffing ──
+      updatedMatrix.forEach((row: any[], rowIndex: number) => {
+        if (rowIndex === 0 || !row) return;
+        const mappingFiling = filings[rowIndex - 1];
+        if (!mappingFiling) return;
+
+        row.forEach((cellObj: any, colIndex: number) => {
+          const newVal = String(cellObj?.v ?? cellObj?.m ?? "");
+
+          if (colIndex < totalFixedCount) {
+            const fieldKey = FIXED_COLS[colIndex].key;
+            const oldVal = String((mappingFiling as any)[fieldKey] ?? "");
+            if (oldVal === newVal) return;
+            if (fieldKey === "status") updateStatus(mappingFiling.id, newVal);
+            else if (fieldKey === "payment_status") updatePayment(mappingFiling.id, newVal);
+          } else {
+            const customIdx = colIndex - totalFixedCount;
+            const customKey = customColumns[customIdx]?.field_key;
+            if (!customKey) return;
+            const oldVal = String(mappingFiling.custom_fields?.[customKey] ?? "");
+            if (oldVal === newVal) return;
+            updateCustomField(mappingFiling.id, customKey, newVal);
+          }
+        });
+      });
     }
 
-    updatedMatrix.forEach((row: any[], rowIndex: number) => {
-      if (rowIndex === 0 || !row) return;
-      const mappingFiling = filings[rowIndex - 1];
-      if (!mappingFiling) return;
-
-      row.forEach((cellObj: any, colIndex: number) => {
-        const newVal = String(cellObj?.v ?? cellObj?.m ?? "");
-        const totalFixedCount = FIXED_COLS.length;
-
-        if (colIndex < totalFixedCount) {
-          const fieldKey = FIXED_COLS[colIndex].key;
-          const oldVal = String((mappingFiling as any)[fieldKey] ?? "");
-          if (oldVal === newVal) return;
-          if (fieldKey === "status") updateStatus(mappingFiling.id, newVal);
-          else if (fieldKey === "payment_status") updatePayment(mappingFiling.id, newVal);
-        } else {
-          const customIdx = colIndex - totalFixedCount;
-          const customKey = customColumns[customIdx]?.field_key;
-          if (!customKey) return;
-          const oldVal = String(mappingFiling.custom_fields?.[customKey] ?? "");
-          if (oldVal === newVal) return;
-          updateCustomField(mappingFiling.id, customKey, newVal);
-        }
-      });
-    });
-
     setSheetData(newData);
+    persistLayout(newData); // ✅ Point 4: save row/col layout + extra-row content on every change
   };
 
-  // ── structural ops (column delete via right-click) ──────────────────────────
-  // FortuneSheet emits onOp for structural changes like deleteRowCol, separate
-  // from onChange (which only covers cell value edits). This is the reliable
-  // way to detect "admin right-clicked a column header and chose Delete".
+  // ── structural ops (column delete via right-click, row/col resize) ─────────
 
   const handleOp = useCallback(
     (ops: any[]) => {
       ops.forEach((op) => {
-        if (op?.op !== "deleteRowCol") return;
-        const value = op.value;
-        if (!value || value.type !== "column") return;
+        if (op?.op === "deleteRowCol") {
+          const value = op.value;
+          if (!value || value.type !== "column") return;
 
-        // value.index = starting column index that was deleted, value.count = how many
-        const startCol = value.index;
-        const count = value.count ?? 1;
+          const startCol = value.index;
+          const count = value.count ?? 1;
 
-        for (let c = startCol; c < startCol + count; c++) {
-          const customIdx = c - FIXED_COLS.length;
-          if (customIdx < 0) continue; // a fixed column was deleted — ignore, not allowed to remove those server-side
-          const colToDelete = customColumns[customIdx];
-          if (colToDelete) {
-            deleteColumnBackend(colToDelete.field_key);
+          for (let c = startCol; c < startCol + count; c++) {
+            const customIdx = c - FIXED_COLS.length;
+            if (customIdx < 0) continue; // fixed columns aren't deletable
+            const colToDelete = customColumns[customIdx];
+            if (colToDelete) deleteColumnBackend(colToDelete.field_key);
           }
-        }
 
-        // Resync from backend after a short delay to reflect the real state
-        // (also protects against FortuneSheet's own local-only column shift)
-        setTimeout(() => fetchData(), 300);
+          // ✅ Point 5: resync from backend so deletion actually sticks
+          setTimeout(() => fetchData(), 300);
+        }
       });
+
+      // Any structural op (resize, merge, etc.) also triggers a layout save,
+      // debounced via persistLayout — handled through onChange already since
+      // FortuneSheet fires onChange alongside onOp for most structural edits.
     },
     [customColumns]
   );
@@ -346,40 +469,8 @@ export function FilingsSpreadsheet() {
           </p>
         </div>
 
+        {/* ✅ Point 3: "Add column" button removed — only Export Excel remains */}
         <div className="flex items-center gap-2">
-          {addingCol ? (
-            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-blue-400 shadow-sm">
-              <input
-                autoFocus
-                placeholder="Column name"
-                value={newColLabel}
-                onChange={(e) => setNewColLabel(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") addColumn();
-                  if (e.key === "Escape") setAddingCol(false);
-                }}
-                className="px-3 py-1 text-sm outline-none w-36"
-              />
-              <button onClick={addColumn} className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                Add
-              </button>
-              <button
-                onClick={() => { setAddingCol(false); setNewColLabel(""); }}
-                className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setAddingCol(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:text-blue-600 transition-colors shadow-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Add column
-            </button>
-          )}
-
           <button
             onClick={exportExcel}
             className="flex items-center gap-1.5 px-3 py-2 text-sm bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors shadow-sm font-medium"
@@ -390,7 +481,12 @@ export function FilingsSpreadsheet() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative" style={{ height: "550px" }}>
+      {/* ✅ Point 2: full-width, full-viewport-aware container so the sheet
+         genuinely fills the page rather than a fixed small box */}
+      <div
+        className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden relative"
+        style={{ height: "calc(100vh - 220px)", minHeight: "500px", width: "100%" }}
+      >
         <Workbook
           data={sheetData}
           onChange={handleCellChange}
@@ -405,8 +501,27 @@ export function FilingsSpreadsheet() {
         />
       </div>
 
+      {/* ✅ Point 6: list of workspace links restored below the sheet, since
+         FortuneSheet cells can't host React <Link> buttons inline */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
+        <h2 className="text-sm font-bold text-text-dark mb-3">Open Customer Workspace</h2>
+        <div className="flex flex-wrap gap-2">
+          {filings.map((f) => (
+            <Link key={f.id} to={`/filings/${f.id}`}>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                {f.member_name || "Unnamed"} · Open
+              </button>
+            </Link>
+          ))}
+          {filings.length === 0 && (
+            <span className="text-xs text-gray-400">No filings yet.</span>
+          )}
+        </div>
+      </div>
+
       <p className="text-xs text-gray-400 text-right italic font-medium">
-        Status & Payment updates sync with customers. Right-click a custom column header to delete it permanently. Type custom equations directly inside cell boxes to execute evaluations.
+        Status & Payment updates sync with customers. Type a new column name in a
+        blank header cell to add it. Right-click a custom column header to delete it.
       </p>
     </div>
   );

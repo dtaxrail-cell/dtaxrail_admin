@@ -55,71 +55,73 @@ function makeCell(r: number, c: number, value: string, extra: Record<string, any
   };
 }
 
-// ─── build sheet — always from live DB data + saved layout prefs ──────────────
+// ─── build sheet — always merges live DB data + saved formatting styles ──────
 
 function buildSheet(
   fetchedFilings: Filing[],
   fetchedCustomCols: CustomColumn[],
   savedPrefs: {
     config?: any;
-    extraCelldata?: any[];   
+    extraCelldata?: any[]; // Holds ALL manual text placements and style maps across the spreadsheet matrix
     totalRows?: number;
     totalCols?: number;
   }
 ) {
   const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
+  
+  // Create a fast lookup map for any saved visual attributes (bold, italic, colors, alignment, etc.)
+  const styleMap = new Map<string, any>();
+  (savedPrefs.extraCelldata ?? []).forEach((cell: any) => {
+    styleMap.set(`${cell.r},${cell.c}`, cell.s || {});
+  });
+
   const celldata: any[] = [];
 
   // ── header row ──────────────────────────────────────────────────────────────
   FIXED_COLS.forEach((col, colIdx) => {
-    celldata.push(makeCell(0, colIdx, col.label, { bl: 1, bg: "#f3f4f6", fc: "#1f2937", ht: 1, vt: 1 }));
+    const savedStyle = styleMap.get(`0,${colIdx}`) || {};
+    celldata.push(makeCell(0, colIdx, col.label, { bl: 1, bg: "#f3f4f6", fc: "#1f2937", ht: 1, vt: 1, ...savedStyle }));
   });
   fetchedCustomCols.forEach((col, colIdx) => {
-    celldata.push(makeCell(0, FIXED_COLS.length + colIdx, col.label, { bl: 1, bg: "#eff6ff", fc: "#1e40af", ht: 1, vt: 1 }));
+    const cIdx = FIXED_COLS.length + colIdx;
+    const savedStyle = styleMap.get(`0,${cIdx}`) || {};
+    celldata.push(makeCell(0, cIdx, col.label, { bl: 1, bg: "#eff6ff", fc: "#1e40af", ht: 1, vt: 1, ...savedStyle }));
   });
 
-  // ── data rows (always from live DB) ─────────────────────────────────────────
+  // ── data rows (always from live DB merged with formatting styles) ────────────
   fetchedFilings.forEach((filing, rIdx) => {
     const r = rIdx + 1;
-    celldata.push(makeCell(r, 0, filing.member_name     ?? ""));
-    celldata.push(makeCell(r, 1, filing.member_pan      ?? ""));
-    celldata.push(makeCell(r, 2, filing.member_password ?? ""));
-    celldata.push(makeCell(r, 3, filing.member_phone    ?? ""));
-    celldata.push(makeCell(r, 4, filing.member_email    ?? ""));
+    
+    const getStyle = (c: number) => styleMap.get(`${r},${c}`) || {};
+
+    celldata.push(makeCell(r, 0, filing.member_name     ?? "", getStyle(0)));
+    celldata.push(makeCell(r, 1, filing.member_pan      ?? "", getStyle(1)));
+    celldata.push(makeCell(r, 2, filing.member_password ?? "", getStyle(2)));
+    celldata.push(makeCell(r, 3, filing.member_phone    ?? "", getStyle(3)));
+    celldata.push(makeCell(r, 4, filing.member_email    ?? "", getStyle(4)));
     celldata.push(makeCell(r, 5,
-      filing.member_dob
-        ? new Date(filing.member_dob).toLocaleDateString("en-IN")
-        : ""
+      filing.member_dob ? new Date(filing.member_dob).toLocaleDateString("en-IN") : "", 
+      getStyle(5)
     ));
-    celldata.push(makeCell(r, 6, filing.status         ?? ""));
-    celldata.push(makeCell(r, 7, filing.payment_status ?? ""));
+    celldata.push(makeCell(r, 6, filing.status         ?? "", getStyle(6)));
+    celldata.push(makeCell(r, 7, filing.payment_status ?? "", getStyle(7)));
     
     fetchedCustomCols.forEach((col, cIdx) => {
-      celldata.push(makeCell(r, FIXED_COLS.length + cIdx,
-        filing.custom_fields?.[col.field_key] ?? ""
-      ));
+      const c = FIXED_COLS.length + cIdx;
+      celldata.push(makeCell(r, c, filing.custom_fields?.[col.field_key] ?? "", getStyle(c)));
     });
   });
 
-  // ── restore extra cells below data (admin's manual notes in blank rows) ─────
+  // ── restore background manual notes entirely outside core structural grid ───
   const dataRowCount = fetchedFilings.length + 1;
-  const extraCells = (savedPrefs.extraCelldata ?? [])
-    .filter((c: any) => c.r >= dataRowCount || c.c >= totalDataCols)
-    .map((c: any) => makeCell(c.r, c.c, c.v?.v ?? c.v?.m ?? String(c.v ?? "")));
+  (savedPrefs.extraCelldata ?? []).forEach((c: any) => {
+    if (c.r >= dataRowCount || c.c >= totalDataCols) {
+      celldata.push(makeCell(c.r, c.c, c.v ?? "", c.s || {}));
+    }
+  });
 
-  const allCelldata = [...celldata, ...extraCells];
-
-  // ── dimensions ──────────────────────────────────────────────────────────────
-  const totalRows = Math.max(
-    fetchedFilings.length + 30,
-    50,
-    savedPrefs.totalRows ?? 0
-  );
-  const totalCols = Math.max(
-    totalDataCols + 12,
-    30,
-    savedPrefs.totalCols ?? 0
-  );
+  const totalRows = Math.max(fetchedFilings.length + 30, 50, savedPrefs.totalRows ?? 0);
+  const totalCols = Math.max(totalDataCols + 12, 30, savedPrefs.totalCols ?? 0);
 
   return [{
     name: "Filings Matrix",
@@ -129,7 +131,7 @@ function buildSheet(
     hide: 0,
     row: totalRows,
     column: totalCols,
-    celldata: allCelldata,
+    celldata,
     config: {
       rowlen:    savedPrefs.config?.rowlen    ?? {},
       columnlen: savedPrefs.config?.columnlen ?? {},
@@ -179,14 +181,9 @@ export function FilingsSpreadsheet() {
   const fetchData = async () => {
     try {
       const tok = await token();
-
       const [filingsRes, layoutRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, {
-          headers: { Authorization: `Bearer ${tok}` },
-        }),
-        fetch(`${API_BASE_URL}/filings/sheet-layout?_ts=${Date.now()}`, {
-          headers: { Authorization: `Bearer ${tok}` },
-        }),
+        fetch(`${API_BASE_URL}/filings?_ts=${Date.now()}`, { headers: { Authorization: `Bearer ${tok}` } }),
+        fetch(`${API_BASE_URL}/filings/sheet-layout?_ts=${Date.now()}`, { headers: { Authorization: `Bearer ${tok}` } }),
       ]);
 
       const filingsData = await filingsRes.json();
@@ -210,11 +207,7 @@ export function FilingsSpreadsheet() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ── Save handler ────────────────────────────────────────────────────────────
-
-  // ── Save handler — Persists all cell modifications and layout properties ────
-
-  // ── Save handler — Persists all cell modifications and layout properties ────
+  // ── Save handler — Persists data modifications, text edits, and formatting properties ──
 
   const handleSave = async () => {
     const current = sheetDataRef.current;
@@ -231,59 +224,65 @@ export function FilingsSpreadsheet() {
       const currentFilings = filingsRef.current;
       const currentCustomCols = customColumnsRef.current;
       const totalFixedCount = FIXED_COLS.length;
-      const dataRowCount = currentFilings.length + 1; 
-      const totalDataCols = totalFixedCount + currentCustomCols.length;
-
-      // Access the real-time 2D data grid array populated by FortuneSheet edits
       const liveGrid = sheet.data;
+
       const updates: any[] = [];
+      const extraCelldata: any[] = [];
 
       if (liveGrid) {
-        for (let rIdx = 0; rIdx < currentFilings.length; rIdx++) {
-          const r = rIdx + 1;
-          const filing = currentFilings[rIdx];
+        for (let r = 0; r < liveGrid.length; r++) {
+          const rowCells = liveGrid[r];
+          if (!rowCells) continue;
 
-          // 1. Status Check (Column 6)
-          const statusCell = liveGrid[r]?.[6];
-          const statusVal = String(statusCell?.v ?? statusCell?.m ?? "").trim();
-          if (statusVal !== String(filing.status ?? "")) {
-            updates.push({ filingId: filing.id, type: "status", value: statusVal });
-          }
+          for (let c = 0; c < rowCells.length; c++) {
+            const cell = rowCells[c];
+            if (!cell) continue;
 
-          // 2. Payment Status Check (Column 7)
-          const paymentCell = liveGrid[r]?.[7];
-          const paymentVal = String(paymentCell?.v ?? paymentCell?.m ?? "").trim();
-          if (paymentVal !== String(filing.payment_status ?? "")) {
-            updates.push({ filingId: filing.id, type: "payment", value: paymentVal });
-          }
-
-          // 3. Custom Field Columns Check (Handles deletions accurately)
-          for (let cIdx = 0; cIdx < currentCustomCols.length; cIdx++) {
-            const colDef = currentCustomCols[cIdx];
-            const c = totalFixedCount + cIdx;
-            const customCell = liveGrid[r]?.[c];
+            const val = String(cell.v ?? cell.m ?? "").trim();
             
-            const currentCellVal = String(customCell?.v ?? customCell?.m ?? "").trim();
-            
-            // Safe fallback to empty string instead of breaking on undefined values
-            const rawOldVal = filing.custom_fields?.[colDef.field_key];
-            const oldCellVal = rawOldVal ? String(rawOldVal).trim() : "";
+            // Extract visual formatting styles to bundle into our style storage payload
+            const styleObj: Record<string, any> = {};
+            if (cell.bl) styleObj.bl = cell.bl;
+            if (cell.it) styleObj.it = cell.it;
+            if (cell.ff) styleObj.ff = cell.ff;
+            if (cell.fs) styleObj.fs = cell.fs;
+            if (cell.fc) styleObj.fc = cell.fc;
+            if (cell.bg) styleObj.bg = cell.bg;
+            if (cell.ht) styleObj.ht = cell.ht;
+            if (cell.vt) styleObj.vt = cell.vt;
+            if (cell.un) styleObj.un = cell.un;
+            if (cell.cl) styleObj.cl = cell.cl;
 
-            if (currentCellVal !== oldCellVal) {
-              updates.push({ 
-                filingId: filing.id, 
-                type: "custom_field", 
-                field_key: colDef.field_key, 
-                value: currentCellVal // Properly propagates empty strings ("") on cell clears
-              });
+            // Track any custom visual layout mappings applied over headers or records
+            if (r === 0 || (r > 0 && r <= currentFilings.length)) {
+              extraCelldata.push({ r, c, v: r === 0 ? val : undefined, s: styleObj });
+            }
+
+            // Sync structured active text fields down to matching customer rows
+            if (r > 0 && r <= currentFilings.length) {
+              const filing = currentFilings[r - 1];
+              if (filing) {
+                if (c === 6 && val !== String(filing.status ?? "")) {
+                  updates.push({ filingId: filing.id, type: "status", value: val });
+                } else if (c === 7 && val !== String(filing.payment_status ?? "")) {
+                  updates.push({ filingId: filing.id, type: "payment", value: val });
+                } else if (c >= totalFixedCount) {
+                  const colDef = currentCustomCols[c - totalFixedCount];
+                  const oldCellVal = filing.custom_fields?.[colDef?.field_key] ? String(filing.custom_fields[colDef.field_key]).trim() : "";
+                  if (colDef && val !== oldCellVal) {
+                    updates.push({ filingId: filing.id, type: "custom_field", field_key: colDef.field_key, value: val });
+                  }
+                }
+              }
+            } else if (r > currentFilings.length || c >= (totalFixedCount + currentCustomCols.length)) {
+              // Store values and formatting for text blocks completely outside structural grid boundaries
+              if (val || Object.keys(styleObj).length > 0) {
+                extraCelldata.push({ r, c, v: val, s: styleObj });
+              }
             }
           }
         }
       }
-
-      // Collect notes from the rest of the sheet grid safely
-      const allCelldata: any[] = sheet.celldata ?? [];
-      const extraCelldata = anonymityFilter(allCelldata, dataRowCount, totalDataCols, liveGrid);
 
       const prefs = {
         config: {
@@ -296,7 +295,6 @@ export function FilingsSpreadsheet() {
         totalCols: sheet.column ?? 30,
       };
 
-      // Fire both bulk dataset updates and layout adjustments simultaneously
       const [dataRes, layoutRes] = await Promise.all([
         fetch(`${API_BASE_URL}/filings/bulk-update`, {
           method: "PUT",
@@ -324,30 +322,6 @@ export function FilingsSpreadsheet() {
     }
   };
 
-  // Helper parsing function to scan cell objects
-  const anonymityFilter = (celldata: any[], dataRowCount: number, totalDataCols: number, liveGrid: any[][]) => {
-    const extra: any[] = [];
-    if (liveGrid) {
-      for (let r = 0; r < liveGrid.length; r++) {
-        for (let c = 0; c < (liveGrid[r]?.length ?? 0); c++) {
-          if (r >= dataRowCount || c >= totalDataCols) {
-            const cell = liveGrid[r][c];
-            if (cell && (cell.v !== undefined || cell.m !== undefined)) {
-              extra.push({ r, c, v: String(cell.v ?? cell.m ?? "") });
-            }
-          }
-        }
-      }
-    } else {
-      celldata.forEach((c: any) => {
-        if (c.r >= dataRowCount || c.c >= totalDataCols) {
-          extra.push({ r: c.r, c: c.c, v: String(c.v?.v ?? c.v?.m ?? "") });
-        }
-      });
-    }
-    return extra;
-  };
-
   const addColumnBackend = async (label: string) => {
     try {
       const tok = await token();
@@ -373,7 +347,6 @@ export function FilingsSpreadsheet() {
 
   const handleCellChange = (newData: any[]) => {
     if (!newData || !newData[0]) return;
-    
     const currentCustomCols = customColumnsRef.current;
     const totalFixedCount   = FIXED_COLS.length;
     const updatedCelldata: any[] = newData[0]?.celldata ?? [];
@@ -387,7 +360,6 @@ export function FilingsSpreadsheet() {
         if (col) fetchData();
       });
     }
-
     setSheetData(newData);
   };
 
@@ -416,24 +388,103 @@ export function FilingsSpreadsheet() {
     }
   }, []);
 
+  // ── excel export — Completely utilizes exceljs to render WYSIWYG files with active colors/styles ──
+
   const exportExcel = async () => {
-    const XLSX = await import("xlsx");
-    const headers = [...FIXED_COLS.map((c) => c.label), ...customColumns.map((c) => c.label)];
-    const rows = filings.map((f) => [
-      f.member_name ?? "", f.member_pan ?? "", f.member_password ?? "",
-      f.member_phone ?? "", f.member_email ?? "",
-      f.member_dob ? new Date(f.member_dob).toLocaleDateString("en-IN") : "",
-      f.status ?? "", f.payment_status ?? "",
-      ...customColumns.map((c) => f.custom_fields?.[c.field_key] ?? ""),
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws["!cols"] = headers.map((h, i) => ({
-      wch: Math.min(Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length)) + 2, 40),
-    }));
-    ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Filings");
-    XLSX.writeFile(wb, `DTaxRail_Filings_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const current = sheetDataRef.current;
+    if (!current || !current[0]) return;
+
+    const ExcelJS = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Filings Matrix");
+
+    const liveGrid = current[0].data;
+    if (!liveGrid) return;
+
+    // Helper mapping function to parse standard Hex transparency formats down safely for ExcelJS bounds
+    const parseColor = (hexStr: string) => {
+      if (!hexStr) return undefined;
+      const cleanHex = hexStr.replace("#", "").trim();
+      return { argb: cleanHex.length === 6 ? `FF${cleanHex}` : cleanHex };
+    };
+
+    // Iterate across the live 2D layout array completely to write values, backgrounds, styles, and dimensions
+    for (let r = 0; r < liveGrid.length; r++) {
+      const rowCells = liveGrid[r];
+      if (!rowCells) continue;
+
+      const excelRow = worksheet.getRow(r + 1);
+
+      // Restore row heights configuration matching user custom adjustments
+      if (current[0].config?.rowlen?.[r]) {
+        excelRow.height = current[0].config.rowlen[r];
+      }
+
+      for (let c = 0; c < rowCells.length; c++) {
+        const cell = rowCells[c];
+        if (!cell) continue;
+
+        const cellValue = cell.v ?? cell.m ?? "";
+        if (cellValue === undefined || cellValue === null) continue;
+
+        const excelCell = excelRow.getCell(c + 1);
+        excelCell.value = String(cellValue);
+
+        // Map live typographic properties directly into the ExcelJS spreadsheet cells configuration
+        const font: any = {};
+        if (cell.bl) font.bold = true;
+        if (cell.it) font.italic = true;
+        if (cell.ff) font.name = cell.ff;
+        if (cell.fs) font.size = parseInt(cell.fs, 10);
+        if (cell.fc) font.color = parseColor(cell.fc);
+        if (cell.un) font.underline = true;
+        if (cell.cl) font.strike = true;
+        if (Object.keys(font).length > 0) excelCell.font = font;
+
+        // Apply background/fill styles mapping
+        if (cell.bg) {
+          excelCell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: parseColor(cell.bg),
+          };
+        }
+
+        // Apply alignment rules configurations
+        const alignment: any = {};
+        if (cell.ht) {
+          alignment.horizontal = cell.ht === "0" ? "center" : cell.ht === "2" ? "right" : "left";
+        }
+        if (cell.vt) {
+          alignment.vertical = cell.vt === "0" ? "middle" : cell.vt === "2" ? "bottom" : "top";
+        }
+        if (Object.keys(alignment).length > 0) excelCell.alignment = alignment;
+      }
+    }
+
+    // Set Column Widths configurations
+    const maxCols = liveGrid[0]?.length ?? 30;
+    for (let c = 0; c < maxCols; c++) {
+      const col = worksheet.getColumn(c + 1);
+      if (current[0].config?.columnlen?.[c]) {
+        col.width = Math.round(current[0].config.columnlen[c] / 7);
+      } else {
+        col.width = 14;
+      }
+    }
+
+    // Freeze header row cleanly
+    worksheet.views = [{ state: "frozen", xSplit: 0, ySplit: 1, topLeftCell: "A2" }];
+
+    // Trigger download of the styled Excel binary data file directly inside browser environment
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `DTaxRail_FilingsMatrix_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (loading || !sheetData) {
@@ -481,7 +532,7 @@ export function FilingsSpreadsheet() {
       </div>
 
       <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 font-medium">
-        💾 Click <strong>Save Layout & Changes</strong> to store cell edits, custom field modifications, deleted notes, or size updates securely to the database.
+        💾 Click <strong>Save Layout & Changes</strong> to store cell contents, custom headers, deleted values, row/column resizes, and formatting attributes permanently.
       </p>
 
       <div

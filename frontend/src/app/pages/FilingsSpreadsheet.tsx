@@ -242,7 +242,7 @@ export function FilingsSpreadsheet() {
 
             const val = String(cell.v ?? cell.m ?? "").trim();
             
-            // Extract visual formatting styles to bundle into our style storage payload
+            // 1. Gather all active visual styling tools applied to this cell
             const styleObj: Record<string, any> = {};
             if (cell.bl) styleObj.bl = cell.bl;
             if (cell.it) styleObj.it = cell.it;
@@ -255,37 +255,41 @@ export function FilingsSpreadsheet() {
             if (cell.un) styleObj.un = cell.un;
             if (cell.cl) styleObj.cl = cell.cl;
 
-            // Preserve style properties for rows within the active table matrix safely
-            if (r === 0 || (r > 0 && r <= currentFilings.length)) {
-              // FIX: Keep 'v: val' for header row, but do NOT overwrite data cell strings with undefined!
+            const isHeaderRow = (r === 0);
+            const isWithinFilingRows = (r > 0 && r <= currentFilings.length);
+            const isCoreDataColumn = (c < (totalFixedCount + currentCustomCols.length));
+
+            // 2. Handle cells that belong to structural database inputs
+            if (isHeaderRow || (isWithinFilingRows && isCoreDataColumn)) {
               extraCelldata.push({ 
                 r, 
                 c, 
-                v: r === 0 ? val : undefined, 
+                v: isHeaderRow ? val : undefined, // Header text is stored in layout; data text is in filings table
                 s: styleObj 
               });
-            }
 
-            // Sync structured active text fields down to matching customer rows
-            if (r > 0 && r <= currentFilings.length) {
-              const filing = currentFilings[r - 1];
-              if (filing) {
-                if (c === 6 && val !== String(filing.status ?? "")) {
-                  updates.push({ filingId: filing.id, type: "status", value: val });
-                } else if (c === 7 && val !== String(filing.payment_status ?? "")) {
-                  updates.push({ filingId: filing.id, type: "payment", value: val });
-                } else if (c >= totalFixedCount) {
-                  const colDef = currentCustomCols[c - totalFixedCount];
-                  if (colDef) {
-                    const oldCellVal = filing.custom_fields?.[colDef.field_key] ? String(filing.custom_fields[colDef.field_key]).trim() : "";
-                    if (val !== oldCellVal) {
-                      updates.push({ filingId: filing.id, type: "custom_field", field_key: colDef.field_key, value: val });
+              // Process database updates for Core filing rows
+              if (isWithinFilingRows) {
+                const filing = currentFilings[r - 1];
+                if (filing) {
+                  if (c === 6 && val !== String(filing.status ?? "")) {
+                    updates.push({ filingId: filing.id, type: "status", value: val });
+                  } else if (c === 7 && val !== String(filing.payment_status ?? "")) {
+                    updates.push({ filingId: filing.id, type: "payment", value: val });
+                  } else if (c >= totalFixedCount) {
+                    const colDef = currentCustomCols[c - totalFixedCount];
+                    if (colDef) {
+                      const oldCellVal = filing.custom_fields?.[colDef.field_key] ? String(filing.custom_fields[colDef.field_key]).trim() : "";
+                      if (val !== oldCellVal) {
+                        updates.push({ filingId: filing.id, type: "custom_field", field_key: colDef.field_key, value: val });
+                      }
                     }
                   }
                 }
               }
-            } else if (r > currentFilings.length || c >= (totalFixedCount + currentCustomCols.length)) {
-              // Store values and formatting for text blocks completely outside structural grid boundaries
+            } else {
+              // 3. Freeform Admin Note Space (Outside core rows OR core columns - like Column J / row 5)
+              // Keep BOTH the text string value and style formats safely intact
               if (val || Object.keys(styleObj).length > 0) {
                 extraCelldata.push({ r, c, v: val, s: styleObj });
               }

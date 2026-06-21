@@ -28,14 +28,11 @@ export const getFilings = async (req, res) => {
         members.date_of_birth      AS member_dob,
         members.relationship
       FROM filings
-      LEFT JOIN customers
-      ON filings.customer_id = customers.id
-      LEFT JOIN members
-      ON filings.member_id = members.id
+      LEFT JOIN customers ON filings.customer_id = customers.id
+      LEFT JOIN members ON filings.member_id = members.id
       ORDER BY filings.created_at DESC
     `);
 
-    // Fetch custom column definitions
     const columnsResult = await getPool().query(
       `SELECT * FROM filing_custom_columns ORDER BY position ASC, created_at ASC`
     );
@@ -53,7 +50,77 @@ export const getFilings = async (req, res) => {
 };
 
 // ==========================================
-// UPDATE FILING STATUS (admin — customer-visible)
+// BULK UPDATE SPREADSHEET CHANGES (ADMIN)
+// ==========================================
+export const bulkUpdateFilings = async (req, res) => {
+  const client = await getPool().connect();
+  try {
+    const { updates } = req.body;
+    if (!Array.isArray(updates)) {
+      return res.status(400).json({ success: false, message: "Updates array required" });
+    }
+
+    await client.query("BEGIN");
+
+    for (const update of updates) {
+      const { filingId, type, value, field_key } = update;
+
+      if (type === "status") {
+        const oldRes = await client.query(`SELECT status FROM filings WHERE id = $1`, [filingId]);
+        const oldStatus = oldRes.rows[0]?.status || '';
+        
+        if (oldStatus !== value) {
+          await client.query(`UPDATE filings SET status = $1 WHERE id = $2`, [String(value), filingId]);
+          await client.query(
+            `INSERT INTO filing_status_history (filing_id, old_status, new_status) VALUES ($1, $2, $3)`,
+            [filingId, oldStatus, String(value)]
+          );
+        }
+      } 
+      else if (type === "payment") {
+        await client.query(`UPDATE filings SET payment_status = $1 WHERE id = $2`, [String(value), filingId]);
+        
+        const filingRes = await client.query(`SELECT customer_id FROM filings WHERE id = $1`, [filingId]);
+        if (filingRes.rows.length > 0) {
+          const customerId = filingRes.rows[0].customer_id;
+          const existing = await client.query(`SELECT id FROM payments WHERE filing_id = $1`, [filingId]);
+          
+          if (existing.rows.length > 0) {
+            await client.query(
+              `UPDATE payments SET payment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE filing_id = $2`,
+              [String(value), filingId]
+            );
+          } else {
+            await client.query(
+              `INSERT INTO payments (customer_id, filing_id, payment_status, payment_date) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
+              [customerId, filingId, String(value)]
+            );
+          }
+        }
+      } 
+      else if (type === "custom_field" && field_key) {
+        await client.query(
+          `UPDATE filings 
+           SET custom_fields = COALESCE(custom_fields, '{}') || jsonb_build_object($1::text, $2::text) 
+           WHERE id = $3`,
+          [field_key, String(value), filingId]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    return res.json({ success: true });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error(error);
+    return res.status(500).json({ success: false, error: error.message });
+  } finally {
+    client.release();
+  }
+};
+
+// ==========================================
+// UPDATE FILING STATUS (admin — single cell edit fallback)
 // ==========================================
 export const updateFilingStatus = async (req, res) => {
   try {
@@ -86,14 +153,13 @@ export const updateFilingStatus = async (req, res) => {
 };
 
 // ==========================================
-// UPDATE PAYMENT STATUS (admin — customer-visible)
+// UPDATE PAYMENT STATUS (admin — single cell edit fallback)
 // ==========================================
 export const updatePaymentStatusInline = async (req, res) => {
   try {
     const { filingId }     = req.params;
     const { payment_status } = req.body;
 
-    // ✅ Explicit typecast to prevent query parsing driver warnings
     await getPool().query(
       `UPDATE filings SET payment_status = $1 WHERE id = $2`,
       [String(payment_status), filingId]
@@ -106,7 +172,6 @@ export const updatePaymentStatusInline = async (req, res) => {
 
     if (filingResult.rows.length > 0) {
       const customerId = filingResult.rows[0].customer_id;
-
       const existing = await getPool().query(
         `SELECT id FROM payments WHERE filing_id = $1`,
         [filingId]
@@ -114,15 +179,12 @@ export const updatePaymentStatusInline = async (req, res) => {
 
       if (existing.rows.length > 0) {
         await getPool().query(
-          `UPDATE payments
-           SET payment_status = $1, updated_at = CURRENT_TIMESTAMP
-           WHERE filing_id = $2`,
+          `UPDATE payments SET payment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE filing_id = $2`,
           [String(payment_status), filingId]
         );
       } else {
         await getPool().query(
-          `INSERT INTO payments (customer_id, filing_id, payment_status, payment_date)
-           VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
+          `INSERT INTO payments (customer_id, filing_id, payment_status, payment_date) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
           [customerId, filingId, String(payment_status)]
         );
       }
@@ -136,7 +198,7 @@ export const updatePaymentStatusInline = async (req, res) => {
 };
 
 // ==========================================
-// UPDATE CUSTOM FIELD VALUE for a single filing cell
+// UPDATE CUSTOM FIELD VALUE (single cell edit fallback)
 // ==========================================
 export const updateCustomField = async (req, res) => {
   try {
@@ -239,7 +301,6 @@ export const createFiling = async (req, res) => {
     }
 
     const customer = customerResult.rows[0];
-
     const memberResult = await getPool().query(
       `SELECT * FROM members WHERE id = $1`,
       [member_id]
@@ -250,10 +311,8 @@ export const createFiling = async (req, res) => {
     }
 
     const filingResult = await getPool().query(
-      `INSERT INTO filings
-         (customer_id, member_id, filing_type, assessment_year, notes, status, progress, payment_status, custom_fields)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-       RETURNING *`,
+      `INSERT INTO filings (customer_id, member_id, filing_type, assessment_year, notes, status, progress, payment_status, custom_fields)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *`,
       [customer.id, member_id, filing_type, formattedYear, notes || null, "Pending", 0, "Unpaid", '{}']
     );
 
@@ -390,7 +449,6 @@ export const getCustomerFilingsForApp = async (req, res) => {
     }
 
     const customer = customerResult.rows[0];
-
     const result = await getPool().query(
       `SELECT
          filings.id,
@@ -406,13 +464,12 @@ export const getCustomerFilingsForApp = async (req, res) => {
          COUNT(DISTINCT filing_results.id) AS result_count,
          (
            SELECT message FROM filing_messages
-           WHERE filing_messages.filing_id = filings.id
-             AND sender_type = 'admin'
+           WHERE filing_messages.filing_id = filings.id AND sender_type = 'admin'
            ORDER BY created_at DESC LIMIT 1
          ) AS latest_admin_message
        FROM filings
-       LEFT JOIN members       ON filings.member_id  = members.id
-       LEFT JOIN documents     ON filings.id = documents.filing_id
+       LEFT JOIN members ON filings.member_id = members.id
+       LEFT JOIN documents ON filings.id = documents.filing_id
        LEFT JOIN filing_results ON filings.id = filing_results.filing_id
        WHERE filings.customer_id = $1
        GROUP BY filings.id, members.id
@@ -444,7 +501,6 @@ export const getCustomerFilingResults = async (req, res) => {
     }
 
     const customer = customerResult.rows[0];
-
     const result = await getPool().query(
       `SELECT
          filings.id,
@@ -457,10 +513,9 @@ export const getCustomerFilingResults = async (req, res) => {
          filing_results.file_url,
          filing_results.created_at
        FROM filings
-       LEFT JOIN members        ON filings.member_id = members.id
+       LEFT JOIN members ON filings.member_id = members.id
        LEFT JOIN filing_results ON filings.id = filing_results.filing_id
-       WHERE filings.customer_id = $1
-         AND filing_results.id IS NOT NULL
+       WHERE filings.customer_id = $1 AND filing_results.id IS NOT NULL
        ORDER BY filing_results.created_at DESC`,
       [customer.id]
     );

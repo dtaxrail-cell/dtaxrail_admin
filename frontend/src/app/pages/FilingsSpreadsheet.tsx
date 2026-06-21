@@ -176,8 +176,6 @@ export function FilingsSpreadsheet() {
 
   const token = async () => (await auth.currentUser?.getIdToken()) ?? "";
 
-  // ── fetch — always rebuilds from live DB data ──────────────────────────────
-
   const fetchData = async () => {
     try {
       const tok = await token();
@@ -212,9 +210,7 @@ export function FilingsSpreadsheet() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ── Save handler — Persists all cell modifications and layout properties ────
-
-  // ── Save handler — Persists all cell modifications and layout properties ────
+  // ── Save handler ────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
     const current = sheetDataRef.current;
@@ -233,66 +229,59 @@ export function FilingsSpreadsheet() {
       const totalFixedCount = FIXED_COLS.length;
       const dataRowCount = currentFilings.length + 1; 
       const totalDataCols = totalFixedCount + currentCustomCols.length;
-      const allCelldata: any[] = sheet.celldata ?? [];
 
-      // 1. Compile map of existing cells for accurate lookup
-      const cellMap = new Map<string, string>();
-      allCelldata.forEach((cell: any) => {
-        if (!cell) return;
-        const val = String(cell.v?.v ?? cell.v?.m ?? "").trim();
-        cellMap.set(`${cell.r},${cell.c}`, val);
-      });
+      // Access the real-time 2D data array populated by FortuneSheet edits
+      const liveGrid = sheet.data;
 
-      // 2. Scan and commit changes across the structured filing data rows
-      for (let rIdx = 0; rIdx < currentFilings.length; rIdx++) {
-        const r = rIdx + 1;
-        const filing = currentFilings[rIdx];
+      if (liveGrid) {
+        for (let rIdx = 0; rIdx < currentFilings.length; rIdx++) {
+          const r = rIdx + 1;
+          const filing = currentFilings[rIdx];
 
-        // Check Status changes (Column 6)
-        const statusVal = cellMap.get(`${r},6`) ?? "";
-        if (statusVal !== String(filing.status ?? "")) {
-          await fetch(`${API_BASE_URL}/filings/status/${filing.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-            body: JSON.stringify({ status: statusVal }),
-          });
-        }
-
-        // Check Payment status changes (Column 7)
-        const paymentVal = cellMap.get(`${r},7`) ?? "";
-        if (paymentVal !== String(filing.payment_status ?? "")) {
-          await fetch(`${API_BASE_URL}/filings/payment/${filing.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-            body: JSON.stringify({ payment_status: paymentVal }),
-          });
-        }
-
-        // Check and capture Custom field data changes/deletions
-        for (let cIdx = 0; cIdx < currentCustomCols.length; cIdx++) {
-          const colDef = currentCustomCols[cIdx];
-          const c = totalFixedCount + cIdx;
-          const currentCellVal = cellMap.get(`${r},${c}`) ?? "";
-          const oldCellVal = String(filing.custom_fields?.[colDef.field_key] ?? "");
-
-          if (currentCellVal !== oldCellVal) {
-            await fetch(`${API_BASE_URL}/filings/custom-field/${filing.id}`, {
+          // 1. Status Check (Column 6)
+          const statusCell = liveGrid[r]?.[6];
+          const statusVal = String(statusCell?.v ?? statusCell?.m ?? "").trim();
+          if (statusVal !== String(filing.status ?? "")) {
+            await fetch(`${API_BASE_URL}/filings/status/${filing.id}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-              body: JSON.stringify({ field_key: colDef.field_key, value: currentCellVal }),
+              body: JSON.stringify({ status: statusVal }),
             });
+          }
+
+          // 2. Payment Status Check (Column 7)
+          const paymentCell = liveGrid[r]?.[7];
+          const paymentVal = String(paymentCell?.v ?? paymentCell?.m ?? "").trim();
+          if (paymentVal !== String(filing.payment_status ?? "")) {
+            await fetch(`${API_BASE_URL}/filings/payment/${filing.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+              body: JSON.stringify({ payment_status: paymentVal }),
+            });
+          }
+
+          // 3. Custom Field Columns Check
+          for (let cIdx = 0; cIdx < currentCustomCols.length; cIdx++) {
+            const colDef = currentCustomCols[cIdx];
+            const c = totalFixedCount + cIdx;
+            const customCell = liveGrid[r]?.[c];
+            const currentCellVal = String(customCell?.v ?? customCell?.m ?? "").trim();
+            const oldCellVal = String(filing.custom_fields?.[colDef.field_key] ?? "").trim();
+
+            if (currentCellVal !== oldCellVal) {
+              await fetch(`${API_BASE_URL}/filings/custom-field/${filing.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+                body: JSON.stringify({ field_key: colDef.field_key, value: currentCellVal }),
+              });
+            }
           }
         }
       }
 
-      // 3. Keep manual notes positioned entirely outside data range bounds
-      const extraCelldata = allCelldata
-        .filter((c: any) => c.r >= dataRowCount || c.c >= totalDataCols)
-        .map((c: any) => ({
-          r: c.r,
-          c: c.c,
-          v: c.v?.v ?? c.v?.m ?? String(c.v ?? ""),
-        }));
+      // Collect notes from the rest of the sheet grid safely
+      const allCelldata: any[] = sheet.celldata ?? [];
+      const extraCelldata = anonymityFilter(allCelldata, dataRowCount, totalDataCols, liveGrid);
 
       const prefs = {
         config: {
@@ -313,16 +302,38 @@ export function FilingsSpreadsheet() {
       const data = await res.json();
 
       setSaveMsg(data.success ? "saved" : "error");
-      
-      // Clean reload to pull updated database states securely
       await fetchData(); 
     } catch (e) {
-      console.error("Save failure details:", e);
+      console.error("Save failed:", e);
       setSaveMsg("error");
-    } {
+    } finally {
       setSaving(false);
       setTimeout(() => setSaveMsg(null), 3000);
     }
+  };
+
+  // Helper parsing function to scan cell objects
+  const anonymityFilter = (celldata: any[], dataRowCount: number, totalDataCols: number, liveGrid: any[][]) => {
+    const extra: any[] = [];
+    if (liveGrid) {
+      for (let r = 0; r < liveGrid.length; r++) {
+        for (let c = 0; c < (liveGrid[r]?.length ?? 0); c++) {
+          if (r >= dataRowCount || c >= totalDataCols) {
+            const cell = liveGrid[r][c];
+            if (cell && (cell.v !== undefined || cell.m !== undefined)) {
+              extra.push({ r, c, v: String(cell.v ?? cell.m ?? "") });
+            }
+          }
+        }
+      }
+    } else {
+      celldata.forEach((c: any) => {
+        if (c.r >= dataRowCount || c.c >= totalDataCols) {
+          extra.push({ r: c.r, c: c.c, v: String(c.v?.v ?? c.v?.m ?? "") });
+        }
+      });
+    }
+    return extra;
   };
 
   const addColumnBackend = async (label: string) => {
@@ -348,8 +359,6 @@ export function FilingsSpreadsheet() {
     } catch (e) { console.error(e); }
   };
 
-  // ── handle sheet cell adjustments locally ───────────────────────────────────
-
   const handleCellChange = (newData: any[]) => {
     if (!newData || !newData[0]) return;
     
@@ -357,7 +366,6 @@ export function FilingsSpreadsheet() {
     const totalFixedCount   = FIXED_COLS.length;
     const updatedCelldata: any[] = newData[0]?.celldata ?? [];
 
-    // Detect headers typed into the next empty header field
     const firstBlankCustomColIdx = totalFixedCount + currentCustomCols.length;
     const headerCell = updatedCelldata.find((c: any) => c.r === 0 && c.c === firstBlankCustomColIdx);
     const maybeNewLabel = String(headerCell?.v?.v ?? headerCell?.v?.m ?? "").trim();

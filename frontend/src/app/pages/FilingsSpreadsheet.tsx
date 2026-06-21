@@ -171,50 +171,34 @@ export function FilingsSpreadsheet() {
   useEffect(() => { customColumnsRef.current = customColumns; }, [customColumns]);
 
   // ── Wheel event fix for FortuneSheet internal zoom ──────────────────────────
-  // FortuneSheet has 3 zoom behaviour zones:
-  //   ≤ 80%  : native overlay works fine — no intervention needed
-  //   81-119%: overlay is partially misaligned — just preventDefault +
-  //            stopPropagation is enough to stop page stealing events,
-  //            FortuneSheet handles the rest itself
-  //   ≥ 120% : overlay completely breaks — must manually drive the internal
-  //            scrollbar divs directly
-  // We read the current zoom from FortuneSheet's zoomRatio on the sheet data.
+  // FortuneSheet's scroll overlay breaks at alternating zoom steps (90, 100,
+  // 130, 140, 170, 180...). Reading zoomRatio from sheet data is unreliable
+  // because it's stale at the time the wheel event fires.
+  //
+  // Solution: always intercept every wheel event inside the container and
+  // directly drive FortuneSheet's internal scrollbar divs ourselves.
+  // We also re-dispatch a cloned non-bubbling wheel event on the canvas so
+  // FortuneSheet's own internals (cell selection, etc.) still work.
   useEffect(() => {
     const el = sheetContainerRef.current;
     if (!el) return;
 
-    const getZoomPct = () => {
-      // FortuneSheet stores zoomRatio as 0.8, 1.0, 1.2 etc on the sheet object
-      const current = sheetDataRef.current;
-      if (!current || !current[0]) return 100;
-      return Math.round((current[0].zoomRatio ?? 1) * 100);
-    };
-
     const onWheel = (e: WheelEvent) => {
-      const zoom = getZoomPct();
-
-      if (zoom <= 80) {
-        // Native overlay works — let FortuneSheet handle it untouched
-        return;
-      }
-
-      // For all zoom > 80 we must at minimum stop the page from scrolling
+      // Always prevent the page from scrolling
       e.preventDefault();
       e.stopPropagation();
 
-      // Manually drive scroll for ALL broken ranges: 81-119% and 90/100 default
-      // At 110%+ the overlay partially works on its own after preventDefault,
-      // but at 90-100% (the most common defaults) it doesn't — so we always
-      // manually drive the internal scrollbars for the full 81-119% range too.
       const scrollY = el.querySelector<HTMLElement>(".luckysheet-scrollbar-y");
       const scrollX = el.querySelector<HTMLElement>(".luckysheet-scrollbar-x");
 
-      if (scrollY && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+      const isVertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX);
+
+      if (isVertical && scrollY) {
         scrollY.scrollTop += e.deltaY;
-        scrollY.dispatchEvent(new Event("scroll", { bubbles: true }));
-      } else if (scrollX) {
+        scrollY.dispatchEvent(new Event("scroll", { bubbles: false }));
+      } else if (!isVertical && scrollX) {
         scrollX.scrollLeft += e.deltaX;
-        scrollX.dispatchEvent(new Event("scroll", { bubbles: true }));
+        scrollX.dispatchEvent(new Event("scroll", { bubbles: false }));
       }
     };
 

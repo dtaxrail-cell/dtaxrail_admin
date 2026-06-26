@@ -34,8 +34,9 @@ type CustomColumn = {
 // ── NEW: Relationship + Workspace added as fixed columns ─────────────────────
 // Relationship is a plain data column (read-only-ish, but still editable like
 // any other cell since it's stored via custom logic below).
-// Workspace is the LAST column — rendered as a real hyperlink cell so users
-// can click straight into that customer's filing workspace from their row.
+// Workspace is the LAST column — its cell just shows a styled link LABEL;
+// the actual clickability is wired up separately via FortuneSheet's
+// sheet-level `hyperlink` map (built in buildSheet, see hyperlinkMap below).
 const FIXED_COLS = [
   { key: "member_name",     label: "Full Name"    },
   { key: "member_pan",      label: "PAN"          },
@@ -68,10 +69,11 @@ function makeCell(r: number, c: number, value: string, extra: Record<string, any
   };
 }
 
-// Hyperlink cell — FortuneSheet renders this as a clickable link using a
-// real <a href> under the hood, so it works exactly like a normal page link
-// (including hard navigation / new tab via ctrl-click, etc.)
-function makeHyperlinkCell(r: number, c: number, label: string, url: string, extra: Record<string, any> = {}) {
+// Plain text cell for the Workspace column — styled to look like a link,
+// but the actual clickability comes from the sheet-level `hyperlink` map
+// (see buildSheet below), NOT from any property on the cell itself.
+// FortuneSheet's real hyperlink type is: Sheet.hyperlink: Record<"r_c", { linkType, linkAddress }>
+function makeWorkspaceLabelCell(r: number, c: number, label: string, extra: Record<string, any> = {}) {
   return {
     r,
     c,
@@ -80,8 +82,7 @@ function makeHyperlinkCell(r: number, c: number, label: string, url: string, ext
       m: label,
       ct: { fa: "General", t: "g" },
       fc: "#2563eb",
-      un: 1, // underline, to visually signal it's a link
-      hl: { linkType: "url", linkAddress: url, linkColor: "#2563eb" },
+      un: 1, // underline, purely visual — does not make it clickable by itself
       ...extra,
     },
   };
@@ -101,6 +102,12 @@ function buildSheet(
 ) {
   const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
   const celldata: any[] = [];
+
+  // ── NEW: sheet-level hyperlink map ───────────────────────────────────────
+  // Per FortuneSheet's actual type definition, hyperlinks live on the SHEET
+  // object as `hyperlink: Record<"row_col", { linkType, linkAddress }>`, not
+  // on the individual cell. This is what makes the Workspace column clickable.
+  const hyperlinkMap: Record<string, { linkType: string; linkAddress: string }> = {};
 
   // ── header row ──────────────────────────────────────────────────────────────
   FIXED_COLS.forEach((col, colIdx) => {
@@ -129,12 +136,12 @@ function buildSheet(
     celldata.push(makeCell(r, COL_STATUS,  filing.status         ?? ""));
     celldata.push(makeCell(r, COL_PAYMENT, filing.payment_status ?? ""));
 
-    // ── NEW: Workspace hyperlink, last column, one per customer row ──────────
-    celldata.push(makeHyperlinkCell(
-      r, COL_WORKSPACE,
-      "Open Workspace →",
-      `/filings/${filing.id}`
-    ));
+    // ── NEW: Workspace column — visual link label + sheet-level hyperlink ────
+    celldata.push(makeWorkspaceLabelCell(r, COL_WORKSPACE, "Open Workspace →"));
+    hyperlinkMap[`${r}_${COL_WORKSPACE}`] = {
+      linkType: "url",
+      linkAddress: `/filings/${filing.id}`,
+    };
 
     fetchedCustomCols.forEach((col, cIdx) => {
       celldata.push(makeCell(r, FIXED_COLS.length + cIdx,
@@ -192,7 +199,7 @@ function buildSheet(
     luckysheet_conditionformat_save: [],
     luckysheet_alternateformat_save: [],
     dataVerification: {},
-    hyperlink: {},
+    hyperlink: hyperlinkMap,
     luckysheet_freezen: {},
     image: [],
   }];

@@ -30,8 +30,12 @@ export const getFilings = async (req, res) => {
       FROM filings
       LEFT JOIN customers ON filings.customer_id = customers.id
       LEFT JOIN members ON filings.member_id = members.id
-      ORDER BY filings.created_at DESC
+      ORDER BY filings.created_at ASC
     `);
+    // CHANGED: was "DESC" (new filings appeared at the TOP of the sheet).
+    // Now "ASC" so new filings are appended at the BOTTOM, in the same
+    // chronological order customers actually filed — matches the requested
+    // admin spreadsheet ordering.
 
     const columnsResult = await getPool().query(
       `SELECT * FROM filing_custom_columns ORDER BY position ASC, created_at ASC`
@@ -68,7 +72,7 @@ export const bulkUpdateFilings = async (req, res) => {
       if (type === "status") {
         const oldRes = await client.query(`SELECT status FROM filings WHERE id = $1`, [filingId]);
         const oldStatus = oldRes.rows[0]?.status || '';
-        
+
         if (oldStatus !== value) {
           await client.query(`UPDATE filings SET status = $1 WHERE id = $2`, [String(value), filingId]);
           await client.query(
@@ -76,15 +80,15 @@ export const bulkUpdateFilings = async (req, res) => {
             [filingId, oldStatus, String(value)]
           );
         }
-      } 
+      }
       else if (type === "payment") {
         await client.query(`UPDATE filings SET payment_status = $1 WHERE id = $2`, [String(value), filingId]);
-        
+
         const filingRes = await client.query(`SELECT customer_id FROM filings WHERE id = $1`, [filingId]);
         if (filingRes.rows.length > 0) {
           const customerId = filingRes.rows[0].customer_id;
           const existing = await client.query(`SELECT id FROM payments WHERE filing_id = $1`, [filingId]);
-          
+
           if (existing.rows.length > 0) {
             await client.query(
               `UPDATE payments SET payment_status = $1, updated_at = CURRENT_TIMESTAMP WHERE filing_id = $2`,
@@ -97,21 +101,19 @@ export const bulkUpdateFilings = async (req, res) => {
             );
           }
         }
-      } 
+      }
       else if (type === "custom_field" && field_key) {
         if (value === "") {
-          // Explicitly drop key from JSONB object if cell content was deleted
           await client.query(
-            `UPDATE filings 
-             SET custom_fields = COALESCE(custom_fields, '{}'::jsonb) - $1::text 
+            `UPDATE filings
+             SET custom_fields = COALESCE(custom_fields, '{}'::jsonb) - $1::text
              WHERE id = $2`,
             [field_key, filingId]
           );
         } else {
-          // Upsert/Update field key with the modified value
           await client.query(
-            `UPDATE filings 
-             SET custom_fields = COALESCE(custom_fields, '{}'::jsonb) || jsonb_build_object($1::text, $2::text) 
+            `UPDATE filings
+             SET custom_fields = COALESCE(custom_fields, '{}'::jsonb) || jsonb_build_object($1::text, $2::text)
              WHERE id = $3`,
             [field_key, String(value), filingId]
           );
@@ -487,6 +489,10 @@ export const getCustomerFilingsForApp = async (req, res) => {
        ORDER BY filings.created_at DESC`,
       [customer.id]
     );
+    // NOTE: customer-facing "My Returns" list intentionally left as DESC
+    // (newest-first) — different UX context, customers want their most
+    // recent filing shown first in their own app. Only the ADMIN
+    // spreadsheet ordering (getFilings, above) was changed to ASC.
 
     return res.json({ success: true, filings: result.rows });
   } catch (error) {

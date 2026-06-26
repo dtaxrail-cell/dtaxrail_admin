@@ -181,10 +181,12 @@ export function FilingsSpreadsheet() {
   const [saveMsg,       setSaveMsg      ] = useState<"saved" | "error" | null>(null);
   const [sheetData,     setSheetData    ] = useState<any[] | null>(null);
   const [workspaceSearch, setWorkspaceSearch] = useState("");
+  const [containerWidth, setContainerWidth] = useState(0);
 
   const sheetDataRef     = useRef<any[] | null>(null);
   const filingsRef       = useRef<Filing[]>([]);
   const customColumnsRef = useRef<CustomColumn[]>([]);
+  const containerRef     = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { sheetDataRef.current     = sheetData;     }, [sheetData]);
   useEffect(() => { filingsRef.current       = filings;       }, [filings]);
@@ -225,6 +227,18 @@ export function FilingsSpreadsheet() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Monitor dynamic window resizing and layout sidebar collapses to forcefully redraw the sheet boundaries
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   // ── Save handler — Persists all cell modifications and layout properties ────
 
@@ -503,10 +517,12 @@ export function FilingsSpreadsheet() {
       </p>
 
       <div
+        ref={containerRef}
         className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden"
         style={{ height: "calc(100vh - 260px)", minHeight: "550px", width: "100%" }}
       >
         <Workbook
+          key={containerWidth}
           data={sheetData}
           onChange={handleCellChange}
           onOp={handleOp}

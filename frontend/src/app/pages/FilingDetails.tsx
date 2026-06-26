@@ -356,51 +356,6 @@ export function FilingDetails() {
 
 
 
-            <div className="flex flex-col gap-3 items-end">
-
-              <Badge
-                className={
-                  filing.status === "Completed"
-                    ? "bg-green-100 text-green-700"
-                    : "bg-amber-100 text-amber-700"
-                }
-              >
-                {status}
-              </Badge>
-
-
-
-              <select
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  updateFilingStatus(e.target.value);
-                }}
-                className="border rounded-xl px-4 py-2"
-              >
-                <option value="Pending">
-                  Pending
-                </option>
-
-                <option value="Under Review">
-                  Under Review
-                </option>
-
-                <option value="Documents Requested">
-                  Documents Requested
-                </option>
-
-                <option value="Filed">
-                  Filed
-                </option>
-
-                <option value="Completed">
-                  Completed
-                </option>
-              </select>
-
-            </div>
-
           </div>
 
         </CardContent>

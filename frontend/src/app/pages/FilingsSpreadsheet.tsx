@@ -535,7 +535,7 @@ export function FilingsSpreadsheet() {
               type="text"
               value={workspaceSearch}
               onChange={(e) => setWorkspaceSearch(e.target.value)}
-              placeholder="Search by name..."
+              placeholder="Search by name or PAN..."
               className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
           </div>
@@ -543,21 +543,21 @@ export function FilingsSpreadsheet() {
         <div className="flex flex-wrap gap-2">
           {filings
             .filter((f) =>
-              (f.member_name || "Unnamed")
+              `${f.member_name || "Unnamed"} ${f.member_pan || ""}`
                 .toLowerCase()
                 .includes(workspaceSearch.trim().toLowerCase())
             )
             .map((f) => (
               <Link key={f.id} to={`/filings/${f.id}`}>
                 <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                  {f.member_name || "Unnamed"} · Open
+                  {f.member_name || "Unnamed"}{f.member_pan ? ` (${f.member_pan})` : ""} · Open
                 </button>
               </Link>
             ))}
           {filings.length === 0 && <span className="text-xs text-gray-400">No filings yet.</span>}
           {filings.length > 0 &&
             filings.filter((f) =>
-              (f.member_name || "Unnamed")
+              `${f.member_name || "Unnamed"} ${f.member_pan || ""}`
                 .toLowerCase()
                 .includes(workspaceSearch.trim().toLowerCase())
             ).length === 0 && (

@@ -10,6 +10,7 @@ import {
   FolderOpen,
   FileText,
   ArrowRight,
+  Search,
 } from "lucide-react";
 
 import { getAuth } from "firebase/auth";
@@ -26,6 +27,9 @@ export function Documents() {
 
   const [filter, setFilter] =
   useState("all");
+
+  const [searchQuery, setSearchQuery] =
+  useState("");
 
 
 
@@ -89,17 +93,26 @@ export function Documents() {
   const filteredCustomers =
   useMemo(() => {
 
+    let result = filings;
+
     if (filter === "active") {
 
-      return filings.filter(
+      result = result.filter(
         (customer) =>
           customer.document_count > 0
       );
     }
 
-    return filings;
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((customer) =>
+        customer.name?.toLowerCase().includes(query)
+      );
+    }
 
-  }, [filings, filter]);
+    return result;
+
+  }, [filings, filter, searchQuery]);
 
 
 
@@ -128,27 +141,43 @@ export function Documents() {
 
 
 
-        {/* FILTER */}
-        <select
+        {/* SEARCH AND FILTER CONTROLS */}
+        <div className="flex items-center gap-3">
 
-          value={filter}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-text-light" />
+            <input
+              type="text"
+              placeholder="Search customers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2 rounded-xl border border-border bg-white text-sm outline-none focus:border-primary transition-colors"
+            />
+          </div>
 
-          onChange={(e) =>
-            setFilter(e.target.value)
-          }
+          {/* FILTER */}
+          <select
 
-          className="px-4 py-2 rounded-xl border border-border bg-white text-sm outline-none"
-        >
+            value={filter}
 
-          <option value="all">
-            All Customers
-          </option>
+            onChange={(e) =>
+              setFilter(e.target.value)
+            }
 
-          <option value="active">
-            Active Filers
-          </option>
+            className="px-4 py-2 rounded-xl border border-border bg-white text-sm outline-none"
+          >
 
-        </select>
+            <option value="all">
+              All Customers
+            </option>
+
+            <option value="active">
+              Active Filers
+            </option>
+
+          </select>
+
+        </div>
 
       </div>
 
@@ -160,6 +189,12 @@ export function Documents() {
 
         <div className="text-center py-10">
           Loading folders...
+        </div>
+
+      ) : filteredCustomers.length === 0 ? (
+
+        <div className="text-center py-10 text-text-mid">
+          No customer folders found matching your criteria.
         </div>
 
       ) : (

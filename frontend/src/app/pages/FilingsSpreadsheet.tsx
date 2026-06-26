@@ -136,6 +136,14 @@ function buildSheet(
     savedPrefs.totalCols ?? 0
   );
 
+  // Set explicit default widths for Status and Payment column indices to perfectly fit long character texts
+  const baseColumnlen = savedPrefs.config?.columnlen ?? {};
+  const defaultColumnlen = {
+    ...baseColumnlen,
+    [COL_STATUS]: baseColumnlen[COL_STATUS] ?? 250,
+    [COL_PAYMENT]: baseColumnlen[COL_PAYMENT] ?? 250,
+  };
+
   return [{
     name: "Filings Matrix",
     id: "sheet-1",
@@ -147,7 +155,7 @@ function buildSheet(
     celldata: allCelldata,
     config: {
       rowlen:    savedPrefs.config?.rowlen    ?? {},
-      columnlen: savedPrefs.config?.columnlen ?? {},
+      columnlen: defaultColumnlen,
       merge:     savedPrefs.config?.merge     ?? {},
     },
     zoomRatio: 1,

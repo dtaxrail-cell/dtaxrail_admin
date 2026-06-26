@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { auth } from "../../lib/firebase";
 import { API_BASE_URL } from "../../config/api";
-import { Download, Save, Loader2 } from "lucide-react";
+import { Download, Save, Loader2, Search } from "lucide-react";
 import { Workbook } from "@fortune-sheet/react";
 import "@fortune-sheet/react/dist/index.css";
+import { Link } from "react-router";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -31,12 +32,9 @@ type CustomColumn = {
   position: number;
 };
 
-// ── NEW: Relationship + Workspace added as fixed columns ─────────────────────
-// Relationship is a plain data column (read-only-ish, but still editable like
-// any other cell since it's stored via custom logic below).
-// Workspace is the LAST column — its cell just shows a styled link LABEL;
-// the actual clickability is wired up separately via FortuneSheet's
-// sheet-level `hyperlink` map (built in buildSheet, see hyperlinkMap below).
+// ── NEW: Relationship added as a fixed column ─────────────────────────────────
+// Plain data column, sourced from the member's record (entered when the
+// member was created in the customer app).
 const FIXED_COLS = [
   { key: "member_name",     label: "Full Name"    },
   { key: "member_pan",      label: "PAN"          },
@@ -47,14 +45,12 @@ const FIXED_COLS = [
   { key: "relationship",    label: "Relationship" }, // ← NEW
   { key: "status",          label: "Status"       },
   { key: "payment_status",  label: "Payment"      },
-  { key: "workspace",       label: "Workspace"    }, // ← NEW (hyperlink column, always last)
 ] as const;
 
 // Index helpers so the rest of the code doesn't need to hardcode positions
 const COL_RELATIONSHIP = FIXED_COLS.findIndex((c) => c.key === "relationship");
 const COL_STATUS       = FIXED_COLS.findIndex((c) => c.key === "status");
 const COL_PAYMENT      = FIXED_COLS.findIndex((c) => c.key === "payment_status");
-const COL_WORKSPACE    = FIXED_COLS.findIndex((c) => c.key === "workspace");
 
 function makeCell(r: number, c: number, value: string, extra: Record<string, any> = {}) {
   return {
@@ -69,24 +65,6 @@ function makeCell(r: number, c: number, value: string, extra: Record<string, any
   };
 }
 
-// Plain text cell for the Workspace column — styled to look like a link,
-// but the actual clickability comes from the sheet-level `hyperlink` map
-// (see buildSheet below), NOT from any property on the cell itself.
-// FortuneSheet's real hyperlink type is: Sheet.hyperlink: Record<"r_c", { linkType, linkAddress }>
-function makeWorkspaceLabelCell(r: number, c: number, label: string, extra: Record<string, any> = {}) {
-  return {
-    r,
-    c,
-    v: {
-      v: label,
-      m: label,
-      ct: { fa: "General", t: "g" },
-      fc: "#2563eb",
-      un: 1, // underline, purely visual — does not make it clickable by itself
-      ...extra,
-    },
-  };
-}
 
 // ─── build sheet — always from live DB data + saved layout prefs ──────────────
 
@@ -103,11 +81,6 @@ function buildSheet(
   const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
   const celldata: any[] = [];
 
-  // ── NEW: sheet-level hyperlink map ───────────────────────────────────────
-  // Per FortuneSheet's actual type definition, hyperlinks live on the SHEET
-  // object as `hyperlink: Record<"row_col", { linkType, linkAddress }>`, not
-  // on the individual cell. This is what makes the Workspace column clickable.
-  const hyperlinkMap: Record<string, { linkType: string; linkAddress: string }> = {};
 
   // ── header row ──────────────────────────────────────────────────────────────
   FIXED_COLS.forEach((col, colIdx) => {
@@ -135,13 +108,6 @@ function buildSheet(
 
     celldata.push(makeCell(r, COL_STATUS,  filing.status         ?? ""));
     celldata.push(makeCell(r, COL_PAYMENT, filing.payment_status ?? ""));
-
-    // ── NEW: Workspace column — visual link label + sheet-level hyperlink ────
-    celldata.push(makeWorkspaceLabelCell(r, COL_WORKSPACE, "Open Workspace →"));
-    hyperlinkMap[`${r}_${COL_WORKSPACE}`] = {
-      linkType: "url",
-      linkAddress: `/filings/${filing.id}`,
-    };
 
     fetchedCustomCols.forEach((col, cIdx) => {
       celldata.push(makeCell(r, FIXED_COLS.length + cIdx,
@@ -199,7 +165,7 @@ function buildSheet(
     luckysheet_conditionformat_save: [],
     luckysheet_alternateformat_save: [],
     dataVerification: {},
-    hyperlink: hyperlinkMap,
+    hyperlink: {},
     luckysheet_freezen: {},
     image: [],
   }];
@@ -214,6 +180,7 @@ export function FilingsSpreadsheet() {
   const [saving,        setSaving       ] = useState(false);
   const [saveMsg,       setSaveMsg      ] = useState<"saved" | "error" | null>(null);
   const [sheetData,     setSheetData    ] = useState<any[] | null>(null);
+  const [workspaceSearch, setWorkspaceSearch] = useState("");
 
   const sheetDataRef     = useRef<any[] | null>(null);
   const filingsRef       = useRef<Filing[]>([]);
@@ -475,7 +442,6 @@ export function FilingsSpreadsheet() {
       f.member_dob ? new Date(f.member_dob).toLocaleDateString("en-IN") : "",
       f.relationship ?? "",
       f.status ?? "", f.payment_status ?? "",
-      `/filings/${f.id}`, // workspace link, plain URL in export
       ...customColumns.map((c) => f.custom_fields?.[c.field_key] ?? ""),
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
@@ -534,7 +500,6 @@ export function FilingsSpreadsheet() {
 
       <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 font-medium">
         💾 Click <strong>Save Layout & Changes</strong> to store cell edits, custom field modifications, deleted notes, or size updates securely to the database.
-        &nbsp;Click <strong>Open Workspace →</strong> in the last column of any row to jump straight into that customer's filing.
       </p>
 
       <div
@@ -553,6 +518,52 @@ export function FilingsSpreadsheet() {
             enableAddBackTop : false,
           }}
         />
+      </div>
+
+      {/* ── Open Customer Workspace — reliable real <Link> buttons ──────────────
+          NOTE: We tried making the last spreadsheet column itself clickable
+          via FortuneSheet's native hyperlink feature, but it froze the page
+          (likely choking trying to handle the UUID-based link address
+          internally). Real React Router links here are 100% reliable and
+          a search box keeps it fast to use even with many filings. */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <h2 className="text-sm font-bold text-text-dark">Open Customer Workspace</h2>
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={workspaceSearch}
+              onChange={(e) => setWorkspaceSearch(e.target.value)}
+              placeholder="Search by name..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {filings
+            .filter((f) =>
+              (f.member_name || "Unnamed")
+                .toLowerCase()
+                .includes(workspaceSearch.trim().toLowerCase())
+            )
+            .map((f) => (
+              <Link key={f.id} to={`/filings/${f.id}`}>
+                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                  {f.member_name || "Unnamed"} · Open
+                </button>
+              </Link>
+            ))}
+          {filings.length === 0 && <span className="text-xs text-gray-400">No filings yet.</span>}
+          {filings.length > 0 &&
+            filings.filter((f) =>
+              (f.member_name || "Unnamed")
+                .toLowerCase()
+                .includes(workspaceSearch.trim().toLowerCase())
+            ).length === 0 && (
+              <span className="text-xs text-gray-400">No matching customers found.</span>
+            )}
+        </div>
       </div>
     </div>
   );

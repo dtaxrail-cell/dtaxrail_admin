@@ -1,6 +1,4 @@
 import { getPool } from "../config/db.js";
-import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"; // ✅ Added GetObjectCommand
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";               // ✅ Added this entire line
 import s3Client from "../utils/spaces.js";

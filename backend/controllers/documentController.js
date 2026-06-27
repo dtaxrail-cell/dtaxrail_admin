@@ -145,7 +145,7 @@ async (req, res) => {
 
 
 // ==========================================
-// GET DOCUMENTS OF SINGLE FILING
+// GET DOCUMENTS OF SINGLE FILING (ADMIN FETCH)
 // ==========================================
 export const getDocumentsByFiling =
 async (req, res) => {
@@ -173,10 +173,42 @@ async (req, res) => {
       [filingId]
     );
 
+    // FIX: Map over documents to attach secure temporary download links for the Admin Panel
+    const signedDocuments = await Promise.all(
+      documentsResult.rows.map(async (doc) => {
+        if (doc.file_url) {
+          try {
+            const bucketUrlString = "https://dtr-file-storage.sgp1.digitaloceanspaces.com/";
+            
+            // Check if the file is stored in Spaces
+            if (doc.file_url.startsWith(bucketUrlString)) {
+              const fileKey = doc.file_url.replace(bucketUrlString, "");
+
+              const command = new GetObjectCommand({
+                Bucket: "dtr-file-storage",
+                Key: fileKey,
+              });
+
+              // Generate a secure access link valid for 1 hour (3600 seconds)
+              const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+
+              return {
+                ...doc,
+                file_url: presignedUrl, // Hand over the readable temporary link to the admin client
+              };
+            }
+          } catch (s3Error) {
+            console.log(`Failed to sign document ${doc.id}:`, s3Error.message);
+          }
+        }
+        return doc; // Fallback to original record if it's legacy Cloudinary or fails
+      })
+    );
+
     return res.json({
       success   : true,
       filing    : filingResult.rows[0],
-      documents : documentsResult.rows,
+      documents : signedDocuments, // Send signed documents array
     });
 
   } catch (error) {

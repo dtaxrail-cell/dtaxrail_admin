@@ -425,7 +425,16 @@ export const requestAdditionalDocument = async (req, res) => {
 export const uploadFilingResult = async (req, res) => {
   try {
     const { filingId } = req.params;
-    const fileUrl  = req.file.path;
+    
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
+
+    // multer-s3 puts the bucket folder path into req.file.key
+    const fileKey = req.file.key;
+    
+    // Construct the high-speed CDN URL instead of the slower origin URL
+    const fileUrl = `https://dtr-file-storage.sgp1.cdn.digitaloceanspaces.com/${fileKey}`;
     const fileName = req.file.originalname;
 
     await getPool().query(

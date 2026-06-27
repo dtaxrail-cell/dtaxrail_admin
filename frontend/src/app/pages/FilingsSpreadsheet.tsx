@@ -67,6 +67,10 @@ function makeCell(r: number, c: number, value: string, extra: Record<string, any
 
 
 // ─── build sheet — always from live DB data + saved layout prefs ──────────────
+// NEW: also accepts `extraSheets` — fully freeform sheets (created via the
+// "+" button in the sheet tab bar) that are stored and restored byte-for-byte,
+// completely independent of the filings data. Sheet 1 always stays driven by
+// the live DB; sheets 2+ are just raw passthrough storage.
 
 function buildSheet(
   fetchedFilings: Filing[],
@@ -76,6 +80,7 @@ function buildSheet(
     extraCelldata?: any[];
     totalRows?: number;
     totalCols?: number;
+    extraSheets?: any[]; // ← NEW: raw FortuneSheet sheet objects, sheets 2+
   }
 ) {
   const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
@@ -136,15 +141,7 @@ function buildSheet(
     savedPrefs.totalCols ?? 0
   );
 
-  // Set explicit default widths for Status and Payment column indices to perfectly fit long character texts
-  const baseColumnlen = savedPrefs.config?.columnlen ?? {};
-  const defaultColumnlen = {
-    ...baseColumnlen,
-    [COL_STATUS]: baseColumnlen[COL_STATUS] ?? 250,
-    [COL_PAYMENT]: baseColumnlen[COL_PAYMENT] ?? 250,
-  };
-
-  return [{
+  const sheet1 = {
     name: "Filings Matrix",
     id: "sheet-1",
     status: 1,
@@ -155,7 +152,7 @@ function buildSheet(
     celldata: allCelldata,
     config: {
       rowlen:    savedPrefs.config?.rowlen    ?? {},
-      columnlen: defaultColumnlen,
+      columnlen: savedPrefs.config?.columnlen ?? {},
       merge:     savedPrefs.config?.merge     ?? {},
     },
     zoomRatio: 1,
@@ -176,7 +173,20 @@ function buildSheet(
     hyperlink: {},
     luckysheet_freezen: {},
     image: [],
-  }];
+  };
+
+  // ── NEW: restore any extra freeform sheets exactly as they were saved ───────
+  // These are raw FortuneSheet sheet objects (whatever shape FortuneSheet
+  // gave us when the admin clicked Save) — we don't touch their structure
+  // at all, just pass them straight back in, preserving order/id/name.
+  // Sheet 1's "status" (active tab) is reset to 1 (active) on load only if
+  // no extra sheet claims it; otherwise we trust whatever was saved.
+  const extraSheets = (savedPrefs.extraSheets ?? []).map((s: any) => ({
+    ...s,
+    status: s.status ?? 0, // sheet 1 stays the default active tab on reload
+  }));
+
+  return [sheet1, ...extraSheets];
 }
 
 // ─── main component ───────────────────────────────────────────────────────────
@@ -189,12 +199,10 @@ export function FilingsSpreadsheet() {
   const [saveMsg,       setSaveMsg      ] = useState<"saved" | "error" | null>(null);
   const [sheetData,     setSheetData    ] = useState<any[] | null>(null);
   const [workspaceSearch, setWorkspaceSearch] = useState("");
-  const [containerWidth, setContainerWidth] = useState(0);
 
   const sheetDataRef     = useRef<any[] | null>(null);
   const filingsRef       = useRef<Filing[]>([]);
   const customColumnsRef = useRef<CustomColumn[]>([]);
-  const containerRef     = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { sheetDataRef.current     = sheetData;     }, [sheetData]);
   useEffect(() => { filingsRef.current       = filings;       }, [filings]);
@@ -235,18 +243,6 @@ export function FilingsSpreadsheet() {
   };
 
   useEffect(() => { fetchData(); }, []);
-
-  // Monitor dynamic window resizing and layout sidebar collapses to forcefully redraw the sheet boundaries
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (let entry of entries) {
-        setContainerWidth(entry.contentRect.width);
-      }
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
 
   // ── Save handler — Persists all cell modifications and layout properties ────
 
@@ -324,6 +320,13 @@ export function FilingsSpreadsheet() {
       const allCelldata: any[] = sheet.celldata ?? [];
       const extraCelldata = anonymityFilter(allCelldata, dataRowCount, totalDataCols, liveGrid);
 
+      // ── NEW: capture every sheet BEYOND sheet 1, completely as-is ────────────
+      // These are freeform/admin-created sheets (via the "+" tab button) and
+      // any renames done to them. We store the full raw sheet objects exactly
+      // as FortuneSheet hands them back, so nothing about their formatting,
+      // formulas, or structure is lost on reload — they're pure passthrough.
+      const extraSheets = current.slice(1);
+
       const prefs = {
         config: {
           rowlen:    sheet.config?.rowlen    ?? {},
@@ -333,6 +336,7 @@ export function FilingsSpreadsheet() {
         extraCelldata,
         totalRows: sheet.row    ?? 50,
         totalCols: sheet.column ?? 30,
+        extraSheets, // ← NEW
       };
 
       // Fire both bulk dataset updates and layout adjustments simultaneously
@@ -431,6 +435,14 @@ export function FilingsSpreadsheet() {
   };
 
   const handleOp = useCallback(async (ops: any[]) => {
+    // ── Guard: only touch the custom-columns backend if the user is
+    // currently active on Sheet 1 (the Filings Matrix). Without this check,
+    // deleting a column on a freeform sheet (2+) could incorrectly trigger
+    // a backend custom-column deletion meant only for the filings grid.
+    const current = sheetDataRef.current;
+    const activeSheet = current?.find((s: any) => s.status === 1) ?? current?.[0];
+    if (!activeSheet || activeSheet.id !== "sheet-1") return;
+
     let columnDeleted = false;
     for (const op of ops) {
       if (op?.op === "deleteRowCol" && op.value?.type === "column") {
@@ -525,12 +537,10 @@ export function FilingsSpreadsheet() {
       </p>
 
       <div
-        ref={containerRef}
         className="rounded-2xl border border-gray-200 bg-white shadow-md overflow-hidden"
         style={{ height: "calc(100vh - 260px)", minHeight: "550px", width: "100%" }}
       >
         <Workbook
-          key={containerWidth}
           data={sheetData}
           onChange={handleCellChange}
           onOp={handleOp}

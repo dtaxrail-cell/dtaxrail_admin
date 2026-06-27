@@ -427,16 +427,7 @@ export function FilingDetails() {
                         </Button>
                       </a>
 
-                      <a
-                        href={doc.file_url}
-                        download
-                        rel="noreferrer"
-                      >
-                        <Button variant="outline">
-                          <Download className="w-4 h-4 mr-2" />
-                          Download
-                        </Button>
-                      </a>
+                     
 
                       <Button
                         variant="ghost"

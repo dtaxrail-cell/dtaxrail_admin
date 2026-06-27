@@ -1,6 +1,6 @@
 import { getPool } from "../config/db.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
-import s3Client from "../config/spaces.js";
+import s3Client from "./spaces.js";
 
 
 

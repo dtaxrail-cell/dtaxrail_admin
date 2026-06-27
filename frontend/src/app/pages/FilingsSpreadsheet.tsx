@@ -16,7 +16,7 @@ type Filing = {
   member_phone: string;
   member_email: string;
   member_dob: string | null;
-  relationship: string | null;   // ← NEW: relationship entered when member was created
+  relationship: string | null;   
   status: string;
   payment_status: string;
   custom_fields: Record<string, string>;
@@ -32,9 +32,6 @@ type CustomColumn = {
   position: number;
 };
 
-// ── NEW: Relationship added as a fixed column ─────────────────────────────────
-// Plain data column, sourced from the member's record (entered when the
-// member was created in the customer app).
 const FIXED_COLS = [
   { key: "member_name",     label: "Full Name"    },
   { key: "member_pan",      label: "PAN"          },
@@ -42,12 +39,11 @@ const FIXED_COLS = [
   { key: "member_phone",    label: "Phone"        },
   { key: "member_email",    label: "Email"        },
   { key: "member_dob",      label: "DOB"          },
-  { key: "relationship",    label: "Relationship" }, // ← NEW
+  { key: "relationship",    label: "Relationship" }, 
   { key: "status",          label: "Status"       },
   { key: "payment_status",  label: "Payment"      },
 ] as const;
 
-// Index helpers so the rest of the code doesn't need to hardcode positions
 const COL_RELATIONSHIP = FIXED_COLS.findIndex((c) => c.key === "relationship");
 const COL_STATUS       = FIXED_COLS.findIndex((c) => c.key === "status");
 const COL_PAYMENT      = FIXED_COLS.findIndex((c) => c.key === "payment_status");
@@ -65,12 +61,7 @@ function makeCell(r: number, c: number, value: string, extra: Record<string, any
   };
 }
 
-
 // ─── build sheet — always from live DB data + saved layout prefs ──────────────
-// NEW: also accepts `extraSheets` — fully freeform sheets (created via the
-// "+" button in the sheet tab bar) that are stored and restored byte-for-byte,
-// completely independent of the filings data. Sheet 1 always stays driven by
-// the live DB; sheets 2+ are just raw passthrough storage.
 
 function buildSheet(
   fetchedFilings: Filing[],
@@ -80,12 +71,11 @@ function buildSheet(
     extraCelldata?: any[];
     totalRows?: number;
     totalCols?: number;
-    extraSheets?: any[]; // ← NEW: raw FortuneSheet sheet objects, sheets 2+
+    extraSheets?: any[]; 
   }
 ) {
   const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
   const celldata: any[] = [];
-
 
   // ── header row ──────────────────────────────────────────────────────────────
   FIXED_COLS.forEach((col, colIdx) => {
@@ -108,9 +98,7 @@ function buildSheet(
         ? new Date(filing.member_dob).toLocaleDateString("en-IN")
         : ""
     ));
-    // ── NEW: Relationship, exactly as entered when the member was created ────
     celldata.push(makeCell(r, COL_RELATIONSHIP, filing.relationship ?? ""));
-
     celldata.push(makeCell(r, COL_STATUS,  filing.status         ?? ""));
     celldata.push(makeCell(r, COL_PAYMENT, filing.payment_status ?? ""));
 
@@ -125,21 +113,25 @@ function buildSheet(
   const dataRowCount = fetchedFilings.length + 1;
   const extraCells = (savedPrefs.extraCelldata ?? [])
     .filter((c: any) => c.r >= dataRowCount || c.c >= totalDataCols)
-    .map((c: any) => makeCell(c.r, c.c, c.v?.v ?? c.v?.m ?? String(c.v ?? "")));
+    .map((c: any) => {
+      // ✅ FIX 3: Retain existing cell styles, fonts, and colors for manual entries on Sheet 1
+      const cellObj = typeof c.v === 'object' && c.v !== null ? c.v : { v: String(c.v ?? "") };
+      return {
+        r: c.r,
+        c: c.c,
+        v: {
+          ct: { fa: "General", t: "g" },
+          ...cellObj,
+          v: cellObj.v ?? cellObj.m ?? "",
+          m: cellObj.m ?? cellObj.v ?? ""
+        }
+      };
+    });
 
   const allCelldata = [...celldata, ...extraCells];
 
-  // ── dimensions ──────────────────────────────────────────────────────────────
-  const totalRows = Math.max(
-    fetchedFilings.length + 30,
-    50,
-    savedPrefs.totalRows ?? 0
-  );
-  const totalCols = Math.max(
-    totalDataCols + 12,
-    30,
-    savedPrefs.totalCols ?? 0
-  );
+  const totalRows = Math.max(fetchedFilings.length + 30, 50, savedPrefs.totalRows ?? 0);
+  const totalCols = Math.max(totalDataCols + 12, 30, savedPrefs.totalCols ?? 0);
 
   const sheet1 = {
     name: "Filings Matrix",
@@ -150,41 +142,41 @@ function buildSheet(
     row: totalRows,
     column: totalCols,
     celldata: allCelldata,
-    config: {
-      rowlen:    savedPrefs.config?.rowlen    ?? {},
-      columnlen: savedPrefs.config?.columnlen ?? {},
-      merge:     savedPrefs.config?.merge     ?? {},
-    },
+    config: savedPrefs.config ?? {},
     zoomRatio: 1,
     showGridLines: 1,
     defaultRowHeight: 24,
     defaultColWidth: 100,
-    scrollLeft: 0,
-    scrollTop: 0,
-    luckysheet_select_save: [],
-    calcChain: [],
-    isPivotTable: false,
-    pivotTable: {},
-    filter_select: {},
-    filter: null,
-    luckysheet_conditionformat_save: [],
-    luckysheet_alternateformat_save: [],
-    dataVerification: {},
-    hyperlink: {},
-    luckysheet_freezen: {},
-    image: [],
   };
 
-  // ── NEW: restore any extra freeform sheets exactly as they were saved ───────
-  // These are raw FortuneSheet sheet objects (whatever shape FortuneSheet
-  // gave us when the admin clicked Save) — we don't touch their structure
-  // at all, just pass them straight back in, preserving order/id/name.
-  // Sheet 1's "status" (active tab) is reset to 1 (active) on load only if
-  // no extra sheet claims it; otherwise we trust whatever was saved.
-  const extraSheets = (savedPrefs.extraSheets ?? []).map((s: any) => ({
-    ...s,
-    status: s.status ?? 0, // sheet 1 stays the default active tab on reload
-  }));
+  // ✅ FIX 1 & 2: Structural fallback parsing extra sheets on rebuild
+  const extraSheets = (savedPrefs.extraSheets ?? []).map((s: any) => {
+    let reconciledCelldata = s.celldata ?? [];
+    if (Array.isArray(s.data)) {
+      reconciledCelldata = [];
+      for (let r = 0; r < s.data.length; r++) {
+        for (let c = 0; c < (s.data[r]?.length ?? 0); c++) {
+          const cell = s.data[r][c];
+          if (cell && (cell.v !== undefined || cell.m !== undefined || Object.keys(cell).length > 0)) {
+            reconciledCelldata.push({ r, c, v: cell });
+          }
+        }
+      }
+    }
+
+    return {
+      ...s,
+      status: 0, 
+      celldata: reconciledCelldata,
+      data: undefined // Allow FortuneSheet to hydrate fresh from structural celldata
+    };
+  });
+
+  // Ensure only one sheet remains active at a time
+  const hasActiveExtra = extraSheets.some((s: any) => s.status === 1);
+  if (hasActiveExtra) {
+    sheet1.status = 0;
+  }
 
   return [sheet1, ...extraSheets];
 }
@@ -203,14 +195,7 @@ export function FilingsSpreadsheet() {
   const sheetDataRef     = useRef<any[] | null>(null);
   const filingsRef       = useRef<Filing[]>([]);
   const customColumnsRef = useRef<CustomColumn[]>([]);
-  // ← NEW: ref to the FortuneSheet Workbook instance. onChange/onOp don't
-  // reliably fire for every kind of edit (confirmed: sheet renames and
-  // typing on freeform sheets 2+ were silently missed). getAllSheets() is
-  // FortuneSheet's own imperative API and always reflects the TRUE current
-  // state of every sheet, regardless of which internal event path caused
-  // the edit — so we read from this at save time instead of trusting the
-  // onChange-fed sheetDataRef alone.
-  const workbookRef = useRef<any>(null);
+  const workbookRef      = useRef<any>(null);
 
   useEffect(() => { sheetDataRef.current     = sheetData;     }, [sheetData]);
   useEffect(() => { filingsRef.current       = filings;       }, [filings]);
@@ -252,17 +237,11 @@ export function FilingsSpreadsheet() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ── Save handler — Persists all cell modifications and layout properties ────
-
   const handleSave = async () => {
     setSaving(true);
     setSaveMsg(null);
 
     try {
-      // Pull the TRUE live state from FortuneSheet's imperative API.
-      // This is what fixes renames and freeform-sheet edits not saving —
-      // those changes never reliably reached sheetDataRef via onChange/onOp,
-      // but getAllSheets() always reflects the actual current state.
       const liveSheets: any[] | undefined = workbookRef.current?.getAllSheets?.();
       const current = liveSheets ?? sheetDataRef.current;
       if (!current) return;
@@ -277,10 +256,6 @@ export function FilingsSpreadsheet() {
       const dataRowCount = currentFilings.length + 1;
       const totalDataCols = totalFixedCount + currentCustomCols.length;
 
-      // Access the real-time 2D data grid. getAllSheets() may return sheets
-      // with only `celldata` populated (sparse array) and no `.data` 2D grid
-      // — rebuild `liveGrid` from celldata in that case so the diff logic
-      // below keeps working regardless of which shape FortuneSheet handed us.
       let liveGrid: any[][] | undefined = sheet.data;
       if (!liveGrid && Array.isArray(sheet.celldata)) {
         liveGrid = [];
@@ -296,34 +271,24 @@ export function FilingsSpreadsheet() {
           const r = rIdx + 1;
           const filing = currentFilings[rIdx];
 
-          // 1. Status Check
           const statusCell = liveGrid[r]?.[COL_STATUS];
           const statusVal = String(statusCell?.v ?? statusCell?.m ?? "").trim();
           if (statusVal !== String(filing.status ?? "")) {
             updates.push({ filingId: filing.id, type: "status", value: statusVal });
           }
 
-          // 2. Payment Status Check
           const paymentCell = liveGrid[r]?.[COL_PAYMENT];
           const paymentVal = String(paymentCell?.v ?? paymentCell?.m ?? "").trim();
           if (paymentVal !== String(filing.payment_status ?? "")) {
             updates.push({ filingId: filing.id, type: "payment", value: paymentVal });
           }
 
-          // NOTE: Relationship and Workspace columns are intentionally NOT
-          // diffed/saved here. Relationship is sourced from the member's
-          // own record (edited via Members screen, not this sheet) and
-          // Workspace is a generated hyperlink, not real data — editing
-          // either of those cells in the grid has no backend effect.
-
-          // 3. Custom Field Columns Check (Handles deletions accurately)
           for (let cIdx = 0; cIdx < currentCustomCols.length; cIdx++) {
             const colDef = currentCustomCols[cIdx];
             const c = totalFixedCount + cIdx;
             const customCell = liveGrid[r]?.[c];
 
             const currentCellVal = String(customCell?.v ?? customCell?.m ?? "").trim();
-
             const rawOldVal = filing.custom_fields?.[colDef.field_key];
             const oldCellVal = rawOldVal ? String(rawOldVal).trim() : "";
 
@@ -339,30 +304,50 @@ export function FilingsSpreadsheet() {
         }
       }
 
-      // Collect notes from the rest of the sheet grid safely
-      const allCelldata: any[] = sheet.celldata ?? [];
-      const extraCelldata = anonymityFilter(allCelldata, dataRowCount, totalDataCols, liveGrid ?? []);
+      // ✅ FIX 3: Capture full styling structures (v objects) instead of string values alone
+      const extraCelldata: any[] = [];
+      if (liveGrid) {
+        for (let r = 0; r < liveGrid.length; r++) {
+          for (let c = 0; c < (liveGrid[r]?.length ?? 0); c++) {
+            if (r >= dataRowCount || c >= totalDataCols) {
+              const cell = liveGrid[r][c];
+              if (cell && Object.keys(cell).length > 0) {
+                extraCelldata.push({ r, c, v: cell });
+              }
+            }
+          }
+        }
+      }
 
-      // ── NEW: capture every sheet BEYOND sheet 1, completely as-is ────────────
-      // These are freeform/admin-created sheets (via the "+" tab button) and
-      // any renames done to them. We store the full raw sheet objects exactly
-      // as FortuneSheet hands them back, so nothing about their formatting,
-      // formulas, or structure is lost on reload — they're pure passthrough.
-      const extraSheets = current.slice(1);
+      // ✅ FIX 1 & 2: Process extra sheets to preserve text properties, configurations, and titles
+      const extraSheets = current.slice(1).map((s: any) => {
+        let accurateCelldata = s.celldata ?? [];
+        if (Array.isArray(s.data)) {
+          accurateCelldata = [];
+          for (let r = 0; r < s.data.length; r++) {
+            for (let c = 0; c < (s.data[r]?.length ?? 0); c++) {
+              const cell = s.data[r][c];
+              if (cell && Object.keys(cell).length > 0) {
+                accurateCelldata.push({ r, c, v: cell });
+              }
+            }
+          }
+        }
+        return {
+          ...s,
+          celldata: accurateCelldata,
+          data: undefined // Strip explicit 2D data matrix representation to force clean re-render from celldata
+        };
+      });
 
       const prefs = {
-        config: {
-          rowlen:    sheet.config?.rowlen    ?? {},
-          columnlen: sheet.config?.columnlen ?? {},
-          merge:     sheet.config?.merge     ?? {},
-        },
+        config: sheet.config ?? {},
         extraCelldata,
         totalRows: sheet.row    ?? 50,
         totalCols: sheet.column ?? 30,
-        extraSheets, // ← NEW
+        extraSheets, 
       };
 
-      // Fire both bulk dataset updates and layout adjustments simultaneously
       const [dataRes, layoutRes] = await Promise.all([
         fetch(`${API_BASE_URL}/filings/bulk-update`, {
           method: "PUT",
@@ -388,30 +373,6 @@ export function FilingsSpreadsheet() {
       setSaving(false);
       setTimeout(() => setSaveMsg(null), 3000);
     }
-  };
-
-  // Helper parsing function to scan cell objects
-  const anonymityFilter = (celldata: any[], dataRowCount: number, totalDataCols: number, liveGrid: any[][]) => {
-    const extra: any[] = [];
-    if (liveGrid) {
-      for (let r = 0; r < liveGrid.length; r++) {
-        for (let c = 0; c < (liveGrid[r]?.length ?? 0); c++) {
-          if (r >= dataRowCount || c >= totalDataCols) {
-            const cell = liveGrid[r][c];
-            if (cell && (cell.v !== undefined || cell.m !== undefined)) {
-              extra.push({ r, c, v: String(cell.v ?? cell.m ?? "") });
-            }
-          }
-        }
-      }
-    } else {
-      celldata.forEach((c: any) => {
-        if (c.r >= dataRowCount || c.c >= totalDataCols) {
-          extra.push({ r: c.r, c: c.c, v: String(c.v?.v ?? c.v?.m ?? "") });
-        }
-      });
-    }
-    return extra;
   };
 
   const addColumnBackend = async (label: string) => {
@@ -458,10 +419,6 @@ export function FilingsSpreadsheet() {
   };
 
   const handleOp = useCallback(async (ops: any[]) => {
-    // ── Guard: only touch the custom-columns backend if the user is
-    // currently active on Sheet 1 (the Filings Matrix). Without this check,
-    // deleting a column on a freeform sheet (2+) could incorrectly trigger
-    // a backend custom-column deletion meant only for the filings grid.
     const current = sheetDataRef.current;
     const activeSheet = current?.find((s: any) => s.status === 1) ?? current?.[0];
     if (!activeSheet || activeSheet.id !== "sheet-1") return;
@@ -571,19 +528,13 @@ export function FilingsSpreadsheet() {
           config={{
             showinfobar      : false,
             sheetFormulaBar  : true,
-            showsheetbar     : false,
+            showsheetbar     : true, // ✅ FIX: Must be true for multiple tab manipulation to work correctly
             enableAddRow     : true,
             enableAddBackTop : false,
           }}
         />
       </div>
 
-      {/* ── Open Customer Workspace — reliable real <Link> buttons ──────────────
-          NOTE: We tried making the last spreadsheet column itself clickable
-          via FortuneSheet's native hyperlink feature, but it froze the page
-          (likely choking trying to handle the UUID-based link address
-          internally). Real React Router links here are 100% reliable and
-          a search box keeps it fast to use even with many filings. */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <h2 className="text-sm font-bold text-text-dark">Open Customer Workspace</h2>

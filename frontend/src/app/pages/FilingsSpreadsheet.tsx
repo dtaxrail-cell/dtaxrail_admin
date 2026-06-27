@@ -72,40 +72,51 @@ function buildSheet(
     totalRows?: number;
     totalCols?: number;
     extraSheets?: any[]; 
-    sheet1Name?: string; // ✅ Type added to parameters
+    sheet1Name?: string;
+    rowStyles?: Record<string, any>; // ✅ Holds styles for database cells
   }
 ) {
   const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
   const celldata: any[] = [];
+  const savedRowStyles = savedPrefs.rowStyles ?? {};
+
+  // Helper to extract stored style properties (backgrounds, fonts, colors, borders)
+  const getSavedStyle = (r: number, c: number) => {
+    return savedRowStyles[`${r}_${c}`] ?? {};
+  };
 
   // ── header row ──────────────────────────────────────────────────────────────
   FIXED_COLS.forEach((col, colIdx) => {
-    celldata.push(makeCell(0, colIdx, col.label, { bl: 1, bg: "#f3f4f6", fc: "#1f2937", ht: 1, vt: 1 }));
+    celldata.push(makeCell(0, colIdx, col.label, { bl: 1, bg: "#f3f4f6", fc: "#1f2937", ht: 1, vt: 1, ...getSavedStyle(0, colIdx) }));
   });
   fetchedCustomCols.forEach((col, colIdx) => {
-    celldata.push(makeCell(0, FIXED_COLS.length + colIdx, col.label, { bl: 1, bg: "#eff6ff", fc: "#1e40af", ht: 1, vt: 1 }));
+    const cIdx = FIXED_COLS.length + colIdx;
+    celldata.push(makeCell(0, cIdx, col.label, { bl: 1, bg: "#eff6ff", fc: "#1e40af", ht: 1, vt: 1, ...getSavedStyle(0, cIdx) }));
   });
 
-  // ── data rows (always from live DB) ─────────────────────────────────────────
+  // ── data rows (always from live DB + merged with saved style configurations) ──
   fetchedFilings.forEach((filing, rIdx) => {
     const r = rIdx + 1;
-    celldata.push(makeCell(r, 0, filing.member_name     ?? ""));
-    celldata.push(makeCell(r, 1, filing.member_pan      ?? ""));
-    celldata.push(makeCell(r, 2, filing.member_password ?? ""));
-    celldata.push(makeCell(r, 3, filing.member_phone    ?? ""));
-    celldata.push(makeCell(r, 4, filing.member_email    ?? ""));
+    celldata.push(makeCell(r, 0, filing.member_name     ?? "", getSavedStyle(r, 0)));
+    celldata.push(makeCell(r, 1, filing.member_pan      ?? "", getSavedStyle(r, 1)));
+    celldata.push(makeCell(r, 2, filing.member_password ?? "", getSavedStyle(r, 2)));
+    celldata.push(makeCell(r, 3, filing.member_phone    ?? "", getSavedStyle(r, 3)));
+    celldata.push(makeCell(r, 4, filing.member_email    ?? "", getSavedStyle(r, 4)));
     celldata.push(makeCell(r, 5,
       filing.member_dob
         ? new Date(filing.member_dob).toLocaleDateString("en-IN")
-        : ""
+        : "",
+      getSavedStyle(r, 5)
     ));
-    celldata.push(makeCell(r, COL_RELATIONSHIP, filing.relationship ?? ""));
-    celldata.push(makeCell(r, COL_STATUS,  filing.status         ?? ""));
-    celldata.push(makeCell(r, COL_PAYMENT, filing.payment_status ?? ""));
+    celldata.push(makeCell(r, COL_RELATIONSHIP, filing.relationship ?? "", getSavedStyle(r, COL_RELATIONSHIP)));
+    celldata.push(makeCell(r, COL_STATUS,  filing.status         ?? "", getSavedStyle(r, COL_STATUS)));
+    celldata.push(makeCell(r, COL_PAYMENT, filing.payment_status ?? "", getSavedStyle(r, COL_PAYMENT)));
 
     fetchedCustomCols.forEach((col, cIdx) => {
-      celldata.push(makeCell(r, FIXED_COLS.length + cIdx,
-        filing.custom_fields?.[col.field_key] ?? ""
+      const c = FIXED_COLS.length + cIdx;
+      celldata.push(makeCell(r, c,
+        filing.custom_fields?.[col.field_key] ?? "",
+        getSavedStyle(r, c)
       ));
     });
   });
@@ -134,7 +145,7 @@ function buildSheet(
   const totalCols = Math.max(totalDataCols + 12, 30, savedPrefs.totalCols ?? 0);
 
   const sheet1 = {
-    name: savedPrefs.sheet1Name ?? "Filings Matrix", // ✅ Respects custom names for the tracking grid sheet
+    name: savedPrefs.sheet1Name ?? "Filings Matrix", 
     id: "sheet-1",
     status: 1,
     order: 0,
@@ -262,41 +273,68 @@ export function FilingsSpreadsheet() {
           liveGrid[cell.r][cell.c] = cell.v;
         }
       }
+      
       const updates: any[] = [];
+      const rowStyles: Record<string, any> = {}; // ✅ Stores cell visual configurations
 
       if (liveGrid) {
-        for (let rIdx = 0; rIdx < currentFilings.length; rIdx++) {
-          const r = rIdx + 1;
-          const filing = currentFilings[rIdx];
+        for (let r = 0; r < liveGrid.length; r++) {
+          const row = liveGrid[r];
+          if (!row) continue;
 
-          const statusCell = liveGrid[r]?.[COL_STATUS];
-          const statusVal = String(statusCell?.v ?? statusCell?.m ?? "").trim();
-          if (statusVal !== String(filing.status ?? "")) {
-            updates.push({ filingId: filing.id, type: "status", value: statusVal });
-          }
+          for (let c = 0; c < row.length; c++) {
+            const cell = row[c];
+            
+            // If we are looking at rows containing DB records or header columns
+            if (r < dataRowCount && c < totalDataCols) {
+              if (cell && typeof cell === "object") {
+                // Strip out raw strings to keep payload clean, but preserve bg, fc, bl, it, ff, fs, ht, vt
+                const { v, m, ...styleProps } = cell;
+                if (Object.keys(styleProps).length > 0) {
+                  rowStyles[`${r}_${c}`] = styleProps;
+                }
+              }
 
-          const paymentCell = liveGrid[r]?.[COL_PAYMENT];
-          const paymentVal = String(paymentCell?.v ?? paymentCell?.m ?? "").trim();
-          if (paymentVal !== String(filing.payment_status ?? "")) {
-            updates.push({ filingId: filing.id, type: "payment", value: paymentVal });
-          }
+              // Process standard textual edits for filing entities
+              if (r > 0) {
+                const rIdx = r - 1; // ✅ Fixed scope hoisting issue
+                if (rIdx < currentFilings.length) {
+                  const filing = currentFilings[rIdx];
 
-          for (let cIdx = 0; cIdx < currentCustomCols.length; cIdx++) {
-            const colDef = currentCustomCols[cIdx];
-            const c = totalFixedCount + cIdx;
-            const customCell = liveGrid[r]?.[c];
+                  if (c === COL_STATUS) {
+                    const statusVal = String(cell?.v ?? cell?.m ?? "").trim();
+                    if (statusVal !== String(filing.status ?? "")) {
+                      updates.push({ filingId: filing.id, type: "status", value: statusVal });
+                    }
+                  }
 
-            const currentCellVal = String(customCell?.v ?? customCell?.m ?? "").trim();
-            const rawOldVal = filing.custom_fields?.[colDef.field_key];
-            const oldCellVal = rawOldVal ? String(rawOldVal).trim() : "";
+                  if (c === COL_PAYMENT) {
+                    const paymentVal = String(cell?.v ?? cell?.m ?? "").trim();
+                    if (paymentVal !== String(filing.payment_status ?? "")) {
+                      updates.push({ filingId: filing.id, type: "payment", value: paymentVal });
+                    }
+                  }
 
-            if (currentCellVal !== oldCellVal) {
-              updates.push({
-                filingId: filing.id,
-                type: "custom_field",
-                field_key: colDef.field_key,
-                value: currentCellVal
-              });
+                  if (c >= totalFixedCount && c < totalDataCols) {
+                    const cIdx = c - totalFixedCount;
+                    const colDef = currentCustomCols[cIdx];
+                    if (colDef) {
+                      const currentCellVal = String(cell?.v ?? cell?.m ?? "").trim();
+                      const rawOldVal = filing.custom_fields?.[colDef.field_key];
+                      const oldCellVal = rawOldVal ? String(rawOldVal).trim() : "";
+
+                      if (currentCellVal !== oldCellVal) {
+                        updates.push({
+                          filingId: filing.id,
+                          type: "custom_field",
+                          field_key: colDef.field_key,
+                          value: currentCellVal
+                        });
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -345,7 +383,8 @@ export function FilingsSpreadsheet() {
         extraCelldata,
         totalRows: sheet.row    ?? 50,
         totalCols: sheet.column ?? 30,
-        sheet1Name: sheet.name, // ✅ Added to save main customer overview name string securely
+        sheet1Name: sheet.name, 
+        rowStyles, // ✅ Saved styling mapping securely persisted
         extraSheets, 
       };
 

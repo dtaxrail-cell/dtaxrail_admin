@@ -1,6 +1,6 @@
 import multer from "multer";
 import multerS3 from "multer-s3";
-import s3Client from "../config/spaces.js"; 
+import s3Client from "./spaces.js"; // Change from "../config/spaces.js" to "./spaces.js"
 import path from "path";
 
 const storage = multerS3({

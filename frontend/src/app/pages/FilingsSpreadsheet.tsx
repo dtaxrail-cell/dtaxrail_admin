@@ -203,6 +203,14 @@ export function FilingsSpreadsheet() {
   const sheetDataRef     = useRef<any[] | null>(null);
   const filingsRef       = useRef<Filing[]>([]);
   const customColumnsRef = useRef<CustomColumn[]>([]);
+  // ← NEW: ref to the FortuneSheet Workbook instance. onChange/onOp don't
+  // reliably fire for every kind of edit (confirmed: sheet renames and
+  // typing on freeform sheets 2+ were silently missed). getAllSheets() is
+  // FortuneSheet's own imperative API and always reflects the TRUE current
+  // state of every sheet, regardless of which internal event path caused
+  // the edit — so we read from this at save time instead of trusting the
+  // onChange-fed sheetDataRef alone.
+  const workbookRef = useRef<any>(null);
 
   useEffect(() => { sheetDataRef.current     = sheetData;     }, [sheetData]);
   useEffect(() => { filingsRef.current       = filings;       }, [filings]);
@@ -247,13 +255,18 @@ export function FilingsSpreadsheet() {
   // ── Save handler — Persists all cell modifications and layout properties ────
 
   const handleSave = async () => {
-    const current = sheetDataRef.current;
-    if (!current) return;
-
     setSaving(true);
     setSaveMsg(null);
 
     try {
+      // Pull the TRUE live state from FortuneSheet's imperative API.
+      // This is what fixes renames and freeform-sheet edits not saving —
+      // those changes never reliably reached sheetDataRef via onChange/onOp,
+      // but getAllSheets() always reflects the actual current state.
+      const liveSheets: any[] | undefined = workbookRef.current?.getAllSheets?.();
+      const current = liveSheets ?? sheetDataRef.current;
+      if (!current) return;
+
       const sheet = current[0];
       if (!sheet) return;
 
@@ -264,8 +277,18 @@ export function FilingsSpreadsheet() {
       const dataRowCount = currentFilings.length + 1;
       const totalDataCols = totalFixedCount + currentCustomCols.length;
 
-      // Access the real-time 2D data grid array populated by FortuneSheet edits
-      const liveGrid = sheet.data;
+      // Access the real-time 2D data grid. getAllSheets() may return sheets
+      // with only `celldata` populated (sparse array) and no `.data` 2D grid
+      // — rebuild `liveGrid` from celldata in that case so the diff logic
+      // below keeps working regardless of which shape FortuneSheet handed us.
+      let liveGrid: any[][] | undefined = sheet.data;
+      if (!liveGrid && Array.isArray(sheet.celldata)) {
+        liveGrid = [];
+        for (const cell of sheet.celldata) {
+          if (!liveGrid[cell.r]) liveGrid[cell.r] = [];
+          liveGrid[cell.r][cell.c] = cell.v;
+        }
+      }
       const updates: any[] = [];
 
       if (liveGrid) {
@@ -318,7 +341,7 @@ export function FilingsSpreadsheet() {
 
       // Collect notes from the rest of the sheet grid safely
       const allCelldata: any[] = sheet.celldata ?? [];
-      const extraCelldata = anonymityFilter(allCelldata, dataRowCount, totalDataCols, liveGrid);
+      const extraCelldata = anonymityFilter(allCelldata, dataRowCount, totalDataCols, liveGrid ?? []);
 
       // ── NEW: capture every sheet BEYOND sheet 1, completely as-is ────────────
       // These are freeform/admin-created sheets (via the "+" tab button) and
@@ -541,6 +564,7 @@ export function FilingsSpreadsheet() {
         style={{ height: "calc(100vh - 260px)", minHeight: "550px", width: "100%" }}
       >
         <Workbook
+          ref={workbookRef}
           data={sheetData}
           onChange={handleCellChange}
           onOp={handleOp}

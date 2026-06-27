@@ -147,12 +147,7 @@ async (req, res) => {
 // ==========================================
 // GET DOCUMENTS OF SINGLE FILING (ADMIN FETCH)
 // ==========================================
-// ==========================================
-// GET DOCUMENTS OF SINGLE FILING (ADMIN FETCH)
-// ==========================================
-export const getDocumentsByFiling =
-async (req, res) => {
-
+export const getDocumentsByFiling = async (req, res) => {
   try {
     const { filingId } = req.params;
 
@@ -162,10 +157,7 @@ async (req, res) => {
     );
 
     if (filingResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Filing not found",
-      });
+      return res.status(404).json({ success: false, message: "Filing not found" });
     }
 
     const documentsResult = await getPool().query(
@@ -175,14 +167,12 @@ async (req, res) => {
 
     const signedDocuments = await Promise.all(
       documentsResult.rows.map(async (doc) => {
-        // FIX: Extract both casings so it never returns undefined
+        // Fallback safety to intercept both database and runtime casing styles
         const currentUrl = doc.file_url || doc.fileUrl;
 
         if (currentUrl) {
           try {
             if (currentUrl.includes("digitaloceanspaces.com")) {
-              
-              // Extract the file key perfectly from the URL
               const fileKey = currentUrl.split("digitaloceanspaces.com/")[1];
 
               const command = new GetObjectCommand({
@@ -190,35 +180,32 @@ async (req, res) => {
                 Key: fileKey,
               });
 
-              // Generate secure link valid for 1 hour
+              // Secure access token valid for 1 hour
               const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
               return {
                 ...doc,
-                file_url: presignedUrl, // Map to both keys to accommodate frontend variations
-                fileUrl: presignedUrl
+                file_url: presignedUrl,
+                fileUrl: presignedUrl // Feed both parameters so frontend works perfectly
               };
             }
           } catch (s3Error) {
-            console.log(`Failed to sign document ${doc.id || doc.id}:`, s3Error.message);
+            console.log(`Failed to sign document ${doc.id}:`, s3Error.message);
           }
         }
-        return doc; 
+        return doc; // Pass through legacy Cloudinary urls unbothered
       })
     );
 
     return res.json({
-      success   : true,
-      filing    : filingResult.rows[0],
-      documents : signedDocuments,
+      success: true,
+      filing: filingResult.rows[0],
+      documents: signedDocuments,
     });
 
   } catch (error) {
     console.log(error);
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 

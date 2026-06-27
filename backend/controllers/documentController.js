@@ -1,5 +1,6 @@
 import { getPool } from "../config/db.js";
-import { v2 as cloudinary } from "cloudinary";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import s3Client from "../config/spaces.js";
 
 
 
@@ -201,7 +202,7 @@ async (req, res) => {
 
     const { documentId } = req.params;
 
-    // 1. Fetch the document row so we can get the Cloudinary URL
+    // 1. Fetch the document row so we can get the DigitalOcean Spaces URL
     const docResult =
     await getPool().query(
       `SELECT * FROM documents WHERE id = $1`,
@@ -217,27 +218,24 @@ async (req, res) => {
 
     const doc = docResult.rows[0];
 
-    // 2. Delete from Cloudinary if a file_url exists
+    // 2. Delete from DigitalOcean Spaces if a file_url exists
     if (doc.file_url) {
       try {
-        // Extract the public_id from the Cloudinary URL
-        // URL format: https://res.cloudinary.com/<cloud>/image/upload/v123456/folder/public_id.ext
-        const urlParts   = doc.file_url.split("/");
-        const uploadIndex = urlParts.indexOf("upload");
+        const bucketUrlString = "https://dtr-file-storage.nyc3.digitaloceanspaces.com/";
 
-        if (uploadIndex !== -1) {
-          // Everything after "upload/v<version>/" is the public_id (with extension)
-          const afterUpload  = urlParts.slice(uploadIndex + 2).join("/");
-          const publicId     = afterUpload.replace(/\.[^/.]+$/, ""); // strip extension
+        if (doc.file_url.startsWith(bucketUrlString)) {
+          const fileKey = doc.file_url.replace(bucketUrlString, "");
 
-          await cloudinary.uploader.destroy(publicId, {
-            resource_type: "auto",
-            invalidate   : true,
+          const deleteCommand = new DeleteObjectCommand({
+            Bucket: "dtr-file-storage",
+            Key: fileKey,
           });
+
+          await s3Client.send(deleteCommand);
         }
-      } catch (cloudinaryError) {
+      } catch (spacesError) {
         // Log but don't fail — still delete from DB
-        console.log("Cloudinary delete warning:", cloudinaryError.message);
+        console.log("Spaces storage delete warning:", spacesError.message);
       }
     }
 

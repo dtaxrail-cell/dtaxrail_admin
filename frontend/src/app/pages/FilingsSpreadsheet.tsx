@@ -72,6 +72,7 @@ function buildSheet(
     totalRows?: number;
     totalCols?: number;
     extraSheets?: any[]; 
+    sheet1Name?: string; // ✅ Type added to parameters
   }
 ) {
   const totalDataCols = FIXED_COLS.length + fetchedCustomCols.length;
@@ -114,7 +115,6 @@ function buildSheet(
   const extraCells = (savedPrefs.extraCelldata ?? [])
     .filter((c: any) => c.r >= dataRowCount || c.c >= totalDataCols)
     .map((c: any) => {
-      // ✅ FIX 3: Retain existing cell styles, fonts, and colors for manual entries on Sheet 1
       const cellObj = typeof c.v === 'object' && c.v !== null ? c.v : { v: String(c.v ?? "") };
       return {
         r: c.r,
@@ -134,7 +134,7 @@ function buildSheet(
   const totalCols = Math.max(totalDataCols + 12, 30, savedPrefs.totalCols ?? 0);
 
   const sheet1 = {
-    name: "Filings Matrix",
+    name: savedPrefs.sheet1Name ?? "Filings Matrix", // ✅ Respects custom names for the tracking grid sheet
     id: "sheet-1",
     status: 1,
     order: 0,
@@ -149,7 +149,6 @@ function buildSheet(
     defaultColWidth: 100,
   };
 
-  // ✅ FIX 1 & 2: Structural fallback parsing extra sheets on rebuild
   const extraSheets = (savedPrefs.extraSheets ?? []).map((s: any) => {
     let reconciledCelldata = s.celldata ?? [];
     if (Array.isArray(s.data)) {
@@ -168,11 +167,10 @@ function buildSheet(
       ...s,
       status: 0, 
       celldata: reconciledCelldata,
-      data: undefined // Allow FortuneSheet to hydrate fresh from structural celldata
+      data: undefined 
     };
   });
 
-  // Ensure only one sheet remains active at a time
   const hasActiveExtra = extraSheets.some((s: any) => s.status === 1);
   if (hasActiveExtra) {
     sheet1.status = 0;
@@ -242,12 +240,10 @@ export function FilingsSpreadsheet() {
     setSaveMsg(null);
 
     try {
-      // 1. Grab the TRUE live state directly from FortuneSheet's internal array
       const liveSheets: any[] | undefined = workbookRef.current?.getAllSheets?.();
       const current = liveSheets ?? sheetDataRef.current;
       if (!current || current.length === 0) return;
 
-      // The live state of Sheet 1 (Filings Matrix) is always the first element
       const sheet = current[0];
       if (!sheet) return;
 
@@ -320,11 +316,9 @@ export function FilingsSpreadsheet() {
         }
       }
 
-      // ✅ FIXED: Slice directly from the live sheets snapshot array to isolate titles
       const extraSheets = current.slice(1).map((liveSheet: any) => {
         let accurateCelldata = liveSheet.celldata ?? [];
         
-        // Rebuild clean cell definitions if a full 2D layout grid is cached
         if (Array.isArray(liveSheet.data)) {
           accurateCelldata = [];
           for (let r = 0; r < liveSheet.data.length; r++) {
@@ -337,13 +331,12 @@ export function FilingsSpreadsheet() {
           }
         }
 
-        // Return the exact unique sheet definition from the array with no cross-contamination
         return {
           ...liveSheet,
-          name: liveSheet.name, // Retains its own specific updated name string
+          name: liveSheet.name, 
           status: liveSheet.status ?? 0,
           celldata: accurateCelldata,
-          data: undefined // Reset explicit 2D arrays to ensure a clean component render pass
+          data: undefined 
         };
       });
 
@@ -352,6 +345,7 @@ export function FilingsSpreadsheet() {
         extraCelldata,
         totalRows: sheet.row    ?? 50,
         totalCols: sheet.column ?? 30,
+        sheet1Name: sheet.name, // ✅ Added to save main customer overview name string securely
         extraSheets, 
       };
 
@@ -535,7 +529,7 @@ export function FilingsSpreadsheet() {
           config={{
             showinfobar      : false,
             sheetFormulaBar  : true,
-            showsheetbar     : true, // ✅ FIX: Must be true for multiple tab manipulation to work correctly
+            showsheetbar     : true, 
             enableAddRow     : true,
             enableAddBackTop : false,
           }}

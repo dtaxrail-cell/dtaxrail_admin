@@ -242,10 +242,12 @@ export function FilingsSpreadsheet() {
     setSaveMsg(null);
 
     try {
+      // 1. Grab the TRUE live state directly from FortuneSheet's internal array
       const liveSheets: any[] | undefined = workbookRef.current?.getAllSheets?.();
       const current = liveSheets ?? sheetDataRef.current;
-      if (!current) return;
+      if (!current || current.length === 0) return;
 
+      // The live state of Sheet 1 (Filings Matrix) is always the first element
       const sheet = current[0];
       if (!sheet) return;
 
@@ -318,30 +320,30 @@ export function FilingsSpreadsheet() {
         }
       }
 
-      // ✅ FIXED: Explicitly map live tab properties to bypass FortuneSheet's caching delay
-      const extraSheets = current.slice(1).map((s: any) => {
-        let accurateCelldata = s.celldata ?? [];
-        if (Array.isArray(s.data)) {
+      // ✅ FIXED: Slice directly from the live sheets snapshot array to isolate titles
+      const extraSheets = current.slice(1).map((liveSheet: any) => {
+        let accurateCelldata = liveSheet.celldata ?? [];
+        
+        // Rebuild clean cell definitions if a full 2D layout grid is cached
+        if (Array.isArray(liveSheet.data)) {
           accurateCelldata = [];
-          for (let r = 0; r < s.data.length; r++) {
-            for (let c = 0; c < (s.data[r]?.length ?? 0); c++) {
-              const cell = s.data[r][c];
+          for (let r = 0; r < liveSheet.data.length; r++) {
+            for (let c = 0; c < (liveSheet.data[r]?.length ?? 0); c++) {
+              const cell = liveSheet.data[r][c];
               if (cell && Object.keys(cell).length > 0) {
                 accurateCelldata.push({ r, c, v: cell });
               }
             }
           }
         }
-        
-        // Find the matching live metadata configuration from the instance to capture real-time renaming
-        const rawSheetInstance = workbookRef.current?.getSheet?.(s.id) || s;
 
+        // Return the exact unique sheet definition from the array with no cross-contamination
         return {
-          ...s,
-          name: rawSheetInstance.name ?? s.name, // Forces the saved layout payload to use the updated label string
-          status: rawSheetInstance.status ?? s.status ?? 0,
+          ...liveSheet,
+          name: liveSheet.name, // Retains its own specific updated name string
+          status: liveSheet.status ?? 0,
           celldata: accurateCelldata,
-          data: undefined
+          data: undefined // Reset explicit 2D arrays to ensure a clean component render pass
         };
       });
 

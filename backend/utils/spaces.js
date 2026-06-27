@@ -4,8 +4,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const s3Client = new S3Client({
-  endpoint: "https://dtr-file-storage.sgp1.digitaloceanspaces.com", 
-  region: "sgp1", // Locked into Singapore as selected
+  // FIX: Remove the bucket name from the endpoint string!
+  endpoint: "https://sgp1.digitaloceanspaces.com", 
+  region: "sgp1", 
   credentials: {
     accessKeyId: process.env.DO_SPACES_KEY,
     secretAccessKey: process.env.DO_SPACES_SECRET,

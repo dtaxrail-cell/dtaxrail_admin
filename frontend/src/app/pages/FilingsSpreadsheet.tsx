@@ -304,7 +304,6 @@ export function FilingsSpreadsheet() {
         }
       }
 
-      // ✅ FIX 3: Capture full styling structures (v objects) instead of string values alone
       const extraCelldata: any[] = [];
       if (liveGrid) {
         for (let r = 0; r < liveGrid.length; r++) {
@@ -319,7 +318,7 @@ export function FilingsSpreadsheet() {
         }
       }
 
-      // ✅ FIX 1 & 2: Process extra sheets to preserve text properties, configurations, and titles
+      // ✅ FIXED: Explicitly map live tab properties to bypass FortuneSheet's caching delay
       const extraSheets = current.slice(1).map((s: any) => {
         let accurateCelldata = s.celldata ?? [];
         if (Array.isArray(s.data)) {
@@ -333,10 +332,16 @@ export function FilingsSpreadsheet() {
             }
           }
         }
+        
+        // Find the matching live metadata configuration from the instance to capture real-time renaming
+        const rawSheetInstance = workbookRef.current?.getSheet?.(s.id) || s;
+
         return {
           ...s,
+          name: rawSheetInstance.name ?? s.name, // Forces the saved layout payload to use the updated label string
+          status: rawSheetInstance.status ?? s.status ?? 0,
           celldata: accurateCelldata,
-          data: undefined // Strip explicit 2D data matrix representation to force clean re-render from celldata
+          data: undefined
         };
       });
 

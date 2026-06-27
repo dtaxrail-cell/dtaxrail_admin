@@ -221,7 +221,7 @@ async (req, res) => {
     // 2. Delete from DigitalOcean Spaces if a file_url exists
     if (doc.file_url) {
       try {
-        const bucketUrlString = "https://dtr-file-storage.nyc3.digitaloceanspaces.com/";
+        const bucketUrlString = "https://dtr-file-storage.sgp1.digitaloceanspaces.com/";
 
         if (doc.file_url.startsWith(bucketUrlString)) {
           const fileKey = doc.file_url.replace(bucketUrlString, "");

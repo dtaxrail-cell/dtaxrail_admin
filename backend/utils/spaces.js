@@ -4,14 +4,14 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const s3Client = new S3Client({
-  endpoint: "https://dtr-file-storage.nyc3.digitaloceanspaces.com", 
-  region: "us-east-1", 
+  endpoint: "https://dtr-file-storage.sgp1.digitaloceanspaces.com", 
+  region: "sgp1", // Locked into Singapore as selected
   credentials: {
-    accessKeyId: "DO00GPC8T84MC",
-    secretAccessKey: process.env.SPACES_SECRET_ACCESS_KEY,
+    accessKeyId: process.env.DO_SPACES_KEY,
+    secretAccessKey: process.env.DO_SPACES_SECRET,
   },
 });
 
-console.log("DigitalOcean Spaces Client Initialized");
+console.log("DigitalOcean Spaces Client Initialized (Singapore)");
 
 export default s3Client;

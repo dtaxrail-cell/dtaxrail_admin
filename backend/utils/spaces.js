@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const s3Client = new S3Client({
-  // FIX: Remove the bucket name from the endpoint string!
+  // FIX: Change this from your bucket-specific URL to the base region endpoint URL
   endpoint: "https://sgp1.digitaloceanspaces.com", 
   region: "sgp1", 
   credentials: {

@@ -151,11 +151,9 @@ export const getDocumentsByFiling =
 async (req, res) => {
 
   try {
-
     const { filingId } = req.params;
 
-    const filingResult =
-    await getPool().query(
+    const filingResult = await getPool().query(
       `SELECT * FROM filings WHERE id = $1`,
       [filingId]
     );
@@ -167,54 +165,52 @@ async (req, res) => {
       });
     }
 
-    const documentsResult =
-    await getPool().query(
+    const documentsResult = await getPool().query(
       `SELECT * FROM documents WHERE filing_id = $1 ORDER BY created_at DESC`,
       [filingId]
     );
 
-    // FIX: Map over documents to attach secure temporary download links for the Admin Panel
+    // FIX: Dynamic URL generation that won't fail on strict domain matches
     const signedDocuments = await Promise.all(
       documentsResult.rows.map(async (doc) => {
         if (doc.file_url) {
           try {
-            const bucketUrlString = "https://dtr-file-storage.sgp1.digitaloceanspaces.com/";
-            
-            // Check if the file is stored in Spaces
-            if (doc.file_url.startsWith(bucketUrlString)) {
-              const fileKey = doc.file_url.replace(bucketUrlString, "");
+            // Check if it belongs to digitaloceanspaces generally
+            if (doc.file_url.includes("digitaloceanspaces.com")) {
+              
+              // Cleanly grab everything after the core domain name to get the key
+              // This works whether it uses a cdn link or a standard bucket link!
+              const fileKey = doc.file_url.split("digitaloceanspaces.com/")[1];
 
               const command = new GetObjectCommand({
                 Bucket: "dtr-file-storage",
-                Key: fileKey,
+                Key: fileKey, // Will cleanly be "dtaxrail_documents/178254..."
               });
 
-              // Generate a secure access link valid for 1 hour (3600 seconds)
+              // Generate secure link valid for 1 hour
               const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
               return {
                 ...doc,
-                file_url: presignedUrl, // Hand over the readable temporary link to the admin client
+                file_url: presignedUrl,
               };
             }
           } catch (s3Error) {
             console.log(`Failed to sign document ${doc.id}:`, s3Error.message);
           }
         }
-        return doc; // Fallback to original record if it's legacy Cloudinary or fails
+        return doc; // Fallback for old legacy Cloudinary URLs
       })
     );
 
     return res.json({
       success   : true,
       filing    : filingResult.rows[0],
-      documents : signedDocuments, // Send signed documents array
+      documents : signedDocuments,
     });
 
   } catch (error) {
-
     console.log(error);
-
     return res.status(500).json({
       success: false,
       error: error.message,

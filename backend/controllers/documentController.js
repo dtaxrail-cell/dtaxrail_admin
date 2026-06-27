@@ -147,6 +147,9 @@ async (req, res) => {
 // ==========================================
 // GET DOCUMENTS OF SINGLE FILING (ADMIN FETCH)
 // ==========================================
+// ==========================================
+// GET DOCUMENTS OF SINGLE FILING (ADMIN FETCH)
+// ==========================================
 export const getDocumentsByFiling =
 async (req, res) => {
 
@@ -170,7 +173,7 @@ async (req, res) => {
       [filingId]
     );
 
-    // FIX: Dynamic URL generation that won't fail on strict domain matches
+    // FIX: Read doc.file_url using your exact database column casing
     const signedDocuments = await Promise.all(
       documentsResult.rows.map(async (doc) => {
         if (doc.file_url) {
@@ -178,13 +181,12 @@ async (req, res) => {
             // Check if it belongs to digitaloceanspaces generally
             if (doc.file_url.includes("digitaloceanspaces.com")) {
               
-              // Cleanly grab everything after the core domain name to get the key
-              // This works whether it uses a cdn link or a standard bucket link!
+              // Cleanly extract the key out of the database string
               const fileKey = doc.file_url.split("digitaloceanspaces.com/")[1];
 
               const command = new GetObjectCommand({
                 Bucket: "dtr-file-storage",
-                Key: fileKey, // Will cleanly be "dtaxrail_documents/178254..."
+                Key: fileKey,
               });
 
               // Generate secure link valid for 1 hour
@@ -192,7 +194,7 @@ async (req, res) => {
 
               return {
                 ...doc,
-                file_url: presignedUrl,
+                file_url: presignedUrl, // Return the signed url back to the client
               };
             }
           } catch (s3Error) {

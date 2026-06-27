@@ -173,16 +173,17 @@ async (req, res) => {
       [filingId]
     );
 
-    // FIX: Read doc.file_url using your exact database column casing
     const signedDocuments = await Promise.all(
       documentsResult.rows.map(async (doc) => {
-        if (doc.file_url) {
+        // FIX: Extract both casings so it never returns undefined
+        const currentUrl = doc.file_url || doc.fileUrl;
+
+        if (currentUrl) {
           try {
-            // Check if it belongs to digitaloceanspaces generally
-            if (doc.file_url.includes("digitaloceanspaces.com")) {
+            if (currentUrl.includes("digitaloceanspaces.com")) {
               
-              // Cleanly extract the key out of the database string
-              const fileKey = doc.file_url.split("digitaloceanspaces.com/")[1];
+              // Extract the file key perfectly from the URL
+              const fileKey = currentUrl.split("digitaloceanspaces.com/")[1];
 
               const command = new GetObjectCommand({
                 Bucket: "dtr-file-storage",
@@ -194,14 +195,15 @@ async (req, res) => {
 
               return {
                 ...doc,
-                file_url: presignedUrl, // Return the signed url back to the client
+                file_url: presignedUrl, // Map to both keys to accommodate frontend variations
+                fileUrl: presignedUrl
               };
             }
           } catch (s3Error) {
-            console.log(`Failed to sign document ${doc.id}:`, s3Error.message);
+            console.log(`Failed to sign document ${doc.id || doc.id}:`, s3Error.message);
           }
         }
-        return doc; // Fallback for old legacy Cloudinary URLs
+        return doc; 
       })
     );
 

@@ -140,8 +140,8 @@ router.post(
 
 
       // FILE DATA
-      const fileUrl =
-      req.file.path;
+      // ✅ After
+const fileUrl = req.file.location;
 
       const fileName =
       req.file.originalname;

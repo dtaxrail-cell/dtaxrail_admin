@@ -12,6 +12,7 @@ import { API_BASE_URL } from "../../config/api";
 import {
   FileText,
   Download,
+  Eye,
   Bell,
   Trash2,
   Loader2,
@@ -418,6 +419,17 @@ export function FilingDetails() {
                       <a
                         href={doc.file_url}
                         target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Button variant="outline">
+                          <Eye className="w-4 h-4 mr-2" />
+                          View
+                        </Button>
+                      </a>
+
+                      <a
+                        href={doc.file_url}
+                        download
                         rel="noreferrer"
                       >
                         <Button variant="outline">

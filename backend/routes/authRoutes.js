@@ -167,7 +167,7 @@ router.delete(
       await client.query(`DELETE FROM members WHERE customer_id = $1`, [customerId]);
 
       // 7. Delete notifications
-      await client.query(`DELETE FROM notifications WHERE customer_id = $1`, [customerId]);
+      //await client.query(`DELETE FROM notifications WHERE customer_id = $1`, [customerId]);
 
       // 8. Delete the customer row itself
       await client.query(`DELETE FROM customers WHERE id = $1`, [customerId]);

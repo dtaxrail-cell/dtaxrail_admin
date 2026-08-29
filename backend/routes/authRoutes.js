@@ -4,7 +4,7 @@ import { getPool } from "../config/db.js";
 
 const router = express.Router();
 
-// Helper to sanitize incoming phone strings into NULL for Postgres
+// Helper function to turn empty strings or invalid inputs into SQL NULL
 const formatPhone = (phone) => {
   if (!phone || typeof phone !== "string") return null;
   const trimmed = phone.trim();
@@ -12,8 +12,7 @@ const formatPhone = (phone) => {
 };
 
 // ==========================================
-// SYNC CUSTOMER
-// Handles Apple, Google, and Phone/Email logins safely
+// SYNC CUSTOMER (Google / Apple / Phone)
 // ==========================================
 router.post(
   "/sync-customer",
@@ -30,7 +29,7 @@ router.post(
       const inputEmail = req.body?.email || req.user?.email || `${uid}@privaterelay.appleid.com`;
       const inputPhone = formatPhone(req.body?.phone || req.user?.phone_number);
 
-      // Check if user already exists by firebase_uid OR email
+      // Check if customer already exists by firebase_uid OR email
       const existingCustomer = await getPool().query(
         `SELECT * FROM customers WHERE firebase_uid = $1 OR email = $2`,
         [uid, inputEmail]
@@ -39,7 +38,7 @@ router.post(
       let customer;
 
       if (existingCustomer.rows.length === 0) {
-        // Insert new customer safely (phone can be NULL to respect UNIQUE constraint)
+        // Insert new customer safely
         const insertResult = await getPool().query(
           `INSERT INTO customers (firebase_uid, name, email, phone, biometric_enabled)
            VALUES ($1, $2, $3, $4, $5)
@@ -49,7 +48,7 @@ router.post(
         customer = insertResult.rows[0];
         console.log("Customer created:", customer.id);
       } else {
-        // Update existing record
+        // Update existing customer safely
         const updateResult = await getPool().query(
           `UPDATE customers 
            SET firebase_uid = $1,
@@ -78,10 +77,9 @@ router.post(
   }
 );
 
-
 // ==========================================
-// UPDATE PHONE / AUTO-CREATE FALLBACK
-// Handles CustomerService.getProfile() auto-registration calls
+// UPDATE PHONE / AUTO-REGISTRATION FALLBACK
+// Fixes CustomerService.getProfile() 404 auto-creation
 // ==========================================
 router.post(
   "/update-phone",
@@ -123,7 +121,6 @@ router.post(
   }
 );
 
-
 // ==========================================
 // ENABLE BIOMETRIC
 // ==========================================
@@ -147,7 +144,6 @@ router.post(
     }
   }
 );
-
 
 // ==========================================
 // DISABLE BIOMETRIC
@@ -173,7 +169,6 @@ router.post(
   }
 );
 
-
 // ==========================================
 // DELETE ACCOUNT
 // ==========================================
@@ -185,13 +180,14 @@ router.delete(
 
     try {
       const { uid, email } = req.user;
+      const targetEmail = email || `${uid}@privaterelay.appleid.com`;
 
       await client.query("BEGIN");
 
       // 1. Find the customer
       const customerResult = await client.query(
         `SELECT id FROM customers WHERE firebase_uid = $1 OR email = $2`,
-        [uid, email || `${uid}@privaterelay.appleid.com`]
+        [uid, targetEmail]
       );
 
       if (customerResult.rows.length === 0) {

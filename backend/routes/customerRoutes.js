@@ -6,7 +6,7 @@ import { getCustomers } from "../controllers/customerController.js";
 
 const router = express.Router();
 
-// Helper function to turn empty or space-only phone strings into SQL NULL
+// Clean empty strings or whitespace into explicit null values
 const formatPhone = (phone) => {
   if (!phone || typeof phone !== "string") return null;
   const trimmed = phone.trim();
@@ -31,14 +31,18 @@ router.get(
   authMiddleware,
   async (req, res) => {
     try {
-      const { uid } = req.user;
+      const uid = req.user?.uid;
 
-      const result = await getPool().query(
-        `
-        SELECT *
-        FROM customers
-        WHERE firebase_uid = $1
-        `,
+      if (!uid) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized: Missing user authentication token",
+        });
+      }
+
+      const pool = getPool();
+      const result = await pool.query(
+        `SELECT * FROM customers WHERE firebase_uid = $1 LIMIT 1`,
         [uid]
       );
 
@@ -49,16 +53,16 @@ router.get(
         });
       }
 
-      res.json({
+      return res.json({
         success: true,
         customer: result.rows[0],
       });
 
     } catch (error) {
-      console.log("GET /me ERROR:", error);
-      res.status(500).json({
+      console.error("GET /me ERROR:", error);
+      return res.status(500).json({
         success: false,
-        error: error.message,
+        error: error.message || "Failed to retrieve profile",
       });
     }
   }
@@ -66,7 +70,7 @@ router.get(
 
 // ==========================================
 // CUSTOMER - UPDATE PHONE / AUTO-REGISTER
-// Handles both phone updates AND auto-creating missing Apple/Google profiles
+// Safe UPSERT for Serverless Environments
 // ==========================================
 router.post(
   "/update-phone",
@@ -78,42 +82,48 @@ router.post(
       if (!uid) {
         return res.status(401).json({
           success: false,
-          message: "Unauthorized",
+          message: "Unauthorized: Missing Firebase UID",
         });
       }
 
-      // Read details from request body (sent by Flutter) or fallback to Firebase token
+      // 1. Sanitize incoming payload
       const inputName = req.body?.name || req.user?.name || "Apple User";
       const inputEmail = req.body?.email || req.user?.email || `${uid}@privaterelay.appleid.com`;
       const inputPhone = formatPhone(req.body?.phone);
 
-      // Perform an UPSERT (INSERT or UPDATE on conflict)
-      const result = await getPool().query(
-        `
+      const pool = getPool();
+
+      // 2. Perform safe UPSERT with explicit parameter casting
+      const upsertQuery = `
         INSERT INTO customers (firebase_uid, name, email, phone, biometric_enabled)
-        VALUES ($1, $2, $3, $4, false)
+        VALUES ($1, $2, $3, $4::text, false)
         ON CONFLICT (firebase_uid)
         DO UPDATE SET
-          name = COALESCE(NULLIF(EXCLUDED.name, ''), customers.name),
-          email = COALESCE(NULLIF(EXCLUDED.email, ''), customers.email),
+          name = CASE WHEN EXCLUDED.name IS NOT NULL AND EXCLUDED.name != '' THEN EXCLUDED.name ELSE customers.name END,
+          email = CASE WHEN EXCLUDED.email IS NOT NULL AND EXCLUDED.email != '' THEN EXCLUDED.email ELSE customers.email END,
           phone = COALESCE(EXCLUDED.phone, customers.phone),
           updated_at = CURRENT_TIMESTAMP
-        RETURNING *
-        `,
-        [uid, inputName, inputEmail, inputPhone]
-      );
+        RETURNING *;
+      `;
 
-      return res.json({
+      const result = await pool.query(upsertQuery, [
+        uid,
+        inputName,
+        inputEmail,
+        inputPhone,
+      ]);
+
+      return res.status(200).json({
         success: true,
-        message: "Customer updated successfully",
+        message: "Customer profile synchronized successfully",
         customer: result.rows[0],
       });
 
     } catch (error) {
-      console.log("UPDATE PHONE ERROR:", error);
+      console.error("CRITICAL /update-phone SERVERLESS ERROR:", error);
       return res.status(500).json({
         success: false,
-        error: error.message,
+        error: error.message || "Internal server error updating customer profile",
       });
     }
   }
